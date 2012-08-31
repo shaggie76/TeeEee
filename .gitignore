@@ -26,4 +26,5 @@
 *.unsuccessfulbuild
 *.wwdb
 ipch/
-obj/
+Win32/
+x64/
