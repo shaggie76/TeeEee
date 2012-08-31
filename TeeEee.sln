@@ -4,16 +4,6 @@ Microsoft Visual Studio Solution File, Format Version 11.00
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TeeEee", "TeeEee.vcxproj", "{1DDBA3D5-FD02-4B26-99E1-CEE0A79F24DC}"
 EndProject
 Global
-	GlobalSection(SourceCodeControl) = preSolution
-		SccNumberOfProjects = 2
-		SccProjectName0 = Perforce\u0020Project
-		SccLocalPath0 = .
-		SccProvider0 = MSSCCI:Perforce\u0020SCM
-		CanCheckoutShared = true
-		SccProjectUniqueName1 = TeeEee.vcxproj
-		SccLocalPath1 = .
-		CanCheckoutShared = true
-	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
 		Debug|x64 = Debug|x64
