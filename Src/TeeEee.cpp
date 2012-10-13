@@ -14,7 +14,8 @@
 #include <vlc/vlc.h>
 
 /*
-AGC
+TODO: should be able to fade to black now
+
 */
 
 typedef std::deque<Movie*> ChannelMovies;
@@ -2475,7 +2476,12 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     srand(static_cast<unsigned>(time(NULL)));
     Assert(!FAILED(CoInitialize(NULL)));
 
-    const char* args[] = { "--no-osd" } ;
+    const char* args[] =
+    {
+        "--no-osd",
+        "--audio-filter=compressor"
+    };
+
     sVlc = libvlc_new(ARRAY_COUNT(args), args);
 
     if(!sVlc)
