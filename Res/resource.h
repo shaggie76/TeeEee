@@ -7,7 +7,6 @@
 #define COMMAND_QUIT                    40002
 #define COMMAND_FULL_SCREEN             40003
 #define COMMAND_RESTART_MOVIE           40006
-#define COMMAND_LOCK_TO_MOVIE           40007
 #define COMMAND_SLEEP_MODE_DISABLED     43001
 #define COMMAND_VOLUME_UP_3             43005
 #define COMMAND_VOLUME_UP_2             43006

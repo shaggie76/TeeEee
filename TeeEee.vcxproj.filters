@@ -21,9 +21,6 @@
     <ClInclude Include="Src\TeeEeePch.h">
       <Filter>Src</Filter>
     </ClInclude>
-    <ClInclude Include="Src\TelnetShell.h">
-      <Filter>Src</Filter>
-    </ClInclude>
     <ClInclude Include="Src\WorkQueue.h">
       <Filter>Src</Filter>
     </ClInclude>
@@ -44,9 +41,6 @@
     <ClCompile Include="Src\TeeEeePch.cpp">
       <Filter>Src</Filter>
     </ClCompile>
-    <ClCompile Include="Src\TelnetShell.cpp">
-      <Filter>Src</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Res\TeeEee.ico">
@@ -57,5 +51,10 @@
     <ResourceCompile Include="Res\TeeEee.rc">
       <Filter>Res</Filter>
     </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="Src\Deploy.cmd">
+      <Filter>Src</Filter>
+    </CustomBuild>
   </ItemGroup>
 </Project>

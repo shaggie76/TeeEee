@@ -93,7 +93,7 @@ static void ScanDir(const TCHAR* dir)
         
         TCHAR* ext = Util::FindExtension(movie.name);
         
-        if(!ext || _tcscmp(ext, TEXT(".avi")))
+        if(!ext || (_tcscmp(ext, TEXT(".avi")) && _tcscmp(ext, TEXT(".mp4"))))
         {
             continue;
         }
@@ -139,8 +139,10 @@ static void ScanDir(const TCHAR* dir)
         if(!FileExists(coverName))
         {
             TCHAR messageBuf[1024];
-            _sntprintf(messageBuf, ARRAY_COUNT(messageBuf), TEXT("No cover found for: %s"), movie.name);
-            MessageBox(NULL, messageBuf, TEXT("TeeEee"), MB_OK | MB_ICONERROR);
+            _sntprintf(messageBuf, ARRAY_COUNT(messageBuf), TEXT("No cover found for: %s\n"), movie.name);
+            OutputDebugString(messageBuf);
+
+            /* MessageBox(NULL, messageBuf, TEXT("TeeEee"), MB_OK | MB_ICONERROR); */
         }
 
         gMovies.push_back(movie);

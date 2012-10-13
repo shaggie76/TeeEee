@@ -5,17 +5,18 @@
 #pragma warning(disable: 4127) // conditional expression is constant
 
 #include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <CommCtrl.h>
 #include <tchar.h>
-#include <dshow.h>
+#include <CommCtrl.h>
+#include <OleCtl.h>
+#include <MMSystem.h>
 #include <dinput.h>
+
 #include <float.h>
 #include <math.h>
+#include <stddef.h>
+
 #include <vector>
 #include <deque>
-#include <stddef.h>
 
 #include "Globals.h"
 

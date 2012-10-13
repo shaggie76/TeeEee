@@ -3,7 +3,6 @@
 #include "Movies.h"
 #include "WorkQueue.h"
 #include "Microphone.h"
-#include "TelnetShell.h"
 #include "resource.h"
 
 #include <algorithm>
@@ -12,13 +11,26 @@
 #include <process.h>
 #include <shellapi.h>
 
+#include <vlc/vlc.h>
+
 /*
-    CheckMenuRadioItem to show current channel
+- context menu gone (stop movie 1st?)
 */
 
 typedef std::deque<Movie*> ChannelMovies;
 
-static std::vector<ChannelMovies> sChannels;
+struct Channel
+{
+    Channel() :
+        startedPlaying(0)
+    {
+    }
+
+    ChannelMovies movies;
+    __int64 startedPlaying;
+};
+
+static std::vector<Channel> sChannels;
     
 const UINT SENSITIVITY_STEPS = 10;
 
@@ -27,7 +39,7 @@ const UINT SENSITIVITY_STEPS = 10;
 static WorkQueue<Movie*> sLoadWorkQueue;
 
 const UINT WM_LOADED_MOVIE = (WM_USER + 1); // LPARAM is Movie*
-const UINT WM_GRAPHNOTIFY = (WM_USER + 2);
+const UINT WM_MOVIE_COMPLETED = (WM_USER + 2);
 const UINT WM_REMOTE_BUTTON = (WM_USER + 3); // WPARAM is index
 
 const unsigned THREAD_STACK = 16 * 1024;
@@ -49,18 +61,12 @@ static HFONT sLabelFont = NULL;
 static int sMaxCoverDx = 0;
 static int sMaxCoverDy = 0;
 
-static ChannelMovies* sCurrentChannel = NULL;
+static Channel* sCurrentChannel = NULL;
 static Movie* sBedTimeMovie = NULL;
 
 const time_t PRELOAD_DECAY = 1;
 
-static IGraphBuilder* sGraphBuilder = NULL;
-static IMediaControl* sMediaControl = NULL;
-static IMediaEventEx* sMediaEvent = NULL;
-static IBasicAudio* sBasicAudio = NULL;
-static IVMRWindowlessControl* sWindowlessControl = NULL;
-
-const float VOLUME_QUANTUM = 4.f;
+const float VOLUME_QUANTUM = 1.f;
 
 const float GAIN_HEADROOM = -3.f * VOLUME_QUANTUM;
 
@@ -83,13 +89,19 @@ const UINT SET_VOLUME_DELAY = 10 * 1000; // 10-seconds
 const UINT_PTR HIDE_CURSOR_TIMER = 4;
 const UINT HIDE_CURSOR_DELAY = 10 * 1000; // 10 sec
 
-const REFTIME REFTIME_TO_FILE_TIME = 10000000.0;
-const REFTIME FILE_TIME_REFTIME = 1.0 / REFTIME_TO_FILE_TIME;
-
 static time_t sPreviousShushTimes[16] = {0};
 static size_t sPreviousShushIndex = 0;
 static size_t sTimeoutIndex = 0;
 
+static libvlc_instance_t* sVlc = NULL;
+static libvlc_media_player_t* sVlcPlayer = NULL;
+
+// ms / 100-nanonseconds
+// 1E-3 / 100E-9
+// 1E-3 / 1E-7
+// 1/E-4
+// 1E4
+const __int64 VLCTIME_TO_FILE_TIME = 10000;
 
 enum PlayingState
 {
@@ -117,13 +129,17 @@ static DIJOYSTATE2 sPrevJoyState = {0};
 const size_t SLEEP_INTERVALS = 4;
 static time_t sSleepTime = 0; // If non-zero will sleep after this.
 
-static bool sLockToMovie = false;
-
 static POINT sHideCursorPoint = {0};
 
 static int Round(double f)
 {
     return(static_cast<int>(floor(f + 0.5)));
+}
+
+static int Clamp(int a, int tMin, int tMax)
+{
+    int t = std::max(a, tMin);
+    return(std::min(t, tMax));
 }
 
 static size_t CountRecentShushes(double interval)
@@ -168,7 +184,7 @@ static DWORD WINAPI LoadThread(void *)
         if(FAILED(hr))
         {
             TCHAR logBuffer[512];
-            _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Failed to load %s\n"), movie->name);
+            _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Failed to load %s\n"), filePath);
             OutputDebugString(logBuffer);
             movie->state = Movie::MS_DORMANT;
             continue;
@@ -223,9 +239,9 @@ static void LoadChannelCovers()
 
     for(size_t i = 0; i < sChannels.size(); ++i)
     {
-        if(!sChannels[i].empty())
+        if(!sChannels[i].movies.empty())
         {
-            neededSet.push_back(sChannels[i].front());
+            neededSet.push_back(sChannels[i].movies.front());
         }
     }
 
@@ -288,11 +304,6 @@ static bool StopThreads()
     return(true);
 }
 
-static void OnPaintMovie(HWND windowHandle, PAINTSTRUCT& paintStruct)
-{
-    sWindowlessControl->RepaintVideo(windowHandle, paintStruct.hdc);
-}
-
 static void OnPaintCover(HWND windowHandle, PAINTSTRUCT& paintStruct)
 {
     RECT clientRect = {0};
@@ -319,7 +330,7 @@ static void OnPaintCover(HWND windowHandle, PAINTSTRUCT& paintStruct)
         return;
     }
 
-    Movie* movie = sSleepTime ? sBedTimeMovie : sCurrentChannel->front();
+    Movie* movie = sSleepTime ? sBedTimeMovie : sCurrentChannel->movies.front();
     
     if(movie->state != Movie::MS_LOADED)
     {
@@ -419,38 +430,11 @@ static void CalcFullscreenLayout(int& x, int& y, int& dx, int& dy)
     y = windowRect.top;
 }
 
-void SetVideoSize()
-{
-    if(!sWindowlessControl)
-    {
-        return;
-    }
-
-    // Find the native video size.
-    long nativeWidth = 0;
-    long nativeHeight = 0; 
-    
-    if(FAILED(sWindowlessControl->GetNativeVideoSize(&nativeWidth, &nativeHeight, NULL, NULL)))
-    {
-        return;
-    }
-    
-    RECT videoRectSrc;
-    RECT videoRectDest; 
-    SetRect(&videoRectSrc, 0, 0, nativeWidth, nativeHeight); 
-    
-    GetClientRect(sWindowHandle, &videoRectDest); 
-    SetRect(&videoRectDest, 0, 0, videoRectDest.right, videoRectDest.bottom); 
-    
-    // Set the video position.
-    Assert(!FAILED(sWindowlessControl->SetVideoPosition(&videoRectSrc, &videoRectDest))); 
-}
-
 const TCHAR* VOLUME_REG_KEY = TEXT("SOFTWARE\\TeeEee\\Volume");
 
 void LoadVolumeForMovie()
 {
-    const Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->front();
+    const Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->movies.front();
 
     HKEY key = NULL;
     
@@ -474,7 +458,7 @@ void LoadVolumeForMovie()
 
 void SaveVolumeForMovie()
 {
-    const Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->front();
+    const Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->movies.front();
 
     HKEY key = NULL;
     
@@ -509,150 +493,6 @@ void SaveVolumeForMovie()
     }
     
     Assert(RegCloseKey(key) == ERROR_SUCCESS);
-}
-
-const TCHAR* DURATION_REG_KEY = TEXT("SOFTWARE\\TeeEee\\Duration");
-
-static void SaveDuration(const Movie& movie)
-{
-    Assert(movie.duration);
-    
-    HKEY key = NULL;
-    
-    if(RegCreateKeyEx
-    (
-        HKEY_CURRENT_USER,
-        DURATION_REG_KEY, 
-        0,
-        NULL,
-        REG_OPTION_NON_VOLATILE,
-        KEY_ALL_ACCESS,
-        NULL,
-        &key,
-        NULL
-    ) != ERROR_SUCCESS)
-    {
-        Assert(!"Could not create key value.");
-        return;
-    }
-
-    if(RegSetValueEx
-    (
-        key,
-        movie.name,
-        NULL,
-        REG_QWORD,
-        reinterpret_cast<const BYTE*>(&movie.duration),
-        static_cast<DWORD>(sizeof(movie.duration))
-    ) != ERROR_SUCCESS)
-    {
-        Assert(!"Could not set value.");
-    }
-    
-    Assert(RegCloseKey(key) == ERROR_SUCCESS);
-}
-
-static void LoadMovieDurations(HKEY key, Movies& movies)
-{
-    for(Movies::iterator i = movies.begin(); i != movies.end(); ++i)
-    {
-        Movie& movie = *i;
-        
-        DWORD valueSize = static_cast<DWORD>(sizeof(movie.duration));
-        DWORD valueType = REG_QWORD;
-
-        if(RegQueryValueEx
-        (
-            key,
-            movie.name,
-            NULL,
-            &valueType,
-            reinterpret_cast<BYTE*>(&movie.duration),
-            &valueSize
-        ) != ERROR_SUCCESS)
-        {
-            continue;
-        }
-        
-        if((valueSize != static_cast<DWORD>(sizeof(movie.duration))) || (valueType != REG_QWORD) || (movie.duration < 0))
-        {
-            Assert(RegDeleteValue(key, movie.name) == ERROR_SUCCESS);
-            movie.duration = 0;
-            continue;
-        }
-    }
-}
-
-static void CacheMovieDurations(Movies& movies)
-{
-    for(Movies::iterator i = movies.begin(); i != movies.end(); ++i)
-    {
-        Movie& movie = *i;
-        
-        if(movie.duration)
-        {
-            continue;
-        }
-
-        TCHAR logBuffer[512];
-        _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Caching duration for %s\n"), movie.name);
-        OutputDebugString(logBuffer);
-
-        Assert(!FAILED(CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, reinterpret_cast<void**>(&sGraphBuilder))));
-        if(FAILED(sGraphBuilder->RenderFile(movie.path, NULL)))
-        {
-            _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Could not render file %s\n"), movie.path);
-            OutputDebugString(logBuffer);
-            
-            SafeRelease(sGraphBuilder);
-            continue;
-        }
-        
-        IMediaPosition* mediaPosition = NULL;
-        Assert(!FAILED(sGraphBuilder->QueryInterface(IID_IMediaPosition, reinterpret_cast<void**>(&mediaPosition))));
-        Assert(mediaPosition);
-
-        REFTIME duration = 0;
-        Assert(!FAILED(mediaPosition->get_Duration(&duration)));
-        movie.duration = static_cast<__int64>(duration * REFTIME_TO_FILE_TIME);
-        SafeRelease(mediaPosition);
-
-        SafeRelease(sGraphBuilder);
-
-
-
-        SaveDuration(movie);
-    }
-}
-
-static void LoadMovieDurations()
-{
-    HKEY key = NULL;
-    
-    if(RegCreateKeyEx
-    (
-        HKEY_CURRENT_USER,
-        DURATION_REG_KEY, 
-        0,
-        NULL,
-        REG_OPTION_NON_VOLATILE,
-        KEY_ALL_ACCESS,
-        NULL,
-        &key,
-        NULL
-    ) != ERROR_SUCCESS)
-    {
-        Assert(!"Could not create key value.");
-        return;
-    }
-
-    LoadMovieDurations(key, gMovies);
-    LoadMovieDurations(key, gDial);
-    
-    Assert(RegCloseKey(key) == ERROR_SUCCESS);
-
-    CacheMovieDurations(gMovies);
-    CacheMovieDurations(gDial);
 }
 
 const TCHAR* TEE_EEE_REG_KEY = TEXT("SOFTWARE\\TeeEee");
@@ -832,14 +672,6 @@ struct NameSort
     }
 };
 
-struct DurationSort
-{
-    bool operator()(const Movie& a, const Movie& b) const
-    {
-        return(a.duration < b.duration);
-    }
-};
-
 static void BuildChannels()
 {
     Assert(!gMovies.empty());
@@ -847,7 +679,7 @@ static void BuildChannels()
     // Separate movies into one channel per directory  
       
     std::sort(gMovies.begin(), gMovies.end(), NameSort());
-    std::sort(gDial.begin(), gDial.end(), DurationSort());
+    std::sort(gDial.begin(), gDial.end(), NameSort()); /* TODO: fix these */
     
     TCHAR prevDir[MAX_PATH] = {0};
     sChannels.reserve(32);
@@ -866,10 +698,10 @@ static void BuildChannels()
         if(_tcscmp(prevDir, dir))
         {
             _tcscpy(prevDir, dir);
-            sChannels.push_back(ChannelMovies());
+            sChannels.push_back(Channel());
         }
         
-        sChannels.back().push_back(&movie);
+        sChannels.back().movies.push_back(&movie);
     }
     
     sCurrentChannel = &sChannels[rand() % sChannels.size()];
@@ -909,24 +741,24 @@ static void BuildChannels()
         
         movieName[movieNameSize] = '\0';
         
-        for(size_t j = 0, n = sChannels[i].size(); j < n; ++j)
+        for(size_t j = 0, n = sChannels[i].movies.size(); j < n; ++j)
         {
-            Movie* m = sChannels[i].front();
+            Movie* m = sChannels[i].movies.front();
             
             if(!_tcscmp(m->name, movieName))
             {
                 break;
             }
             
-            sChannels[i].pop_front();
-            sChannels[i].push_back(m);
+            sChannels[i].movies.pop_front();
+            sChannels[i].movies.push_back(m);
         }
 
-        if(sChannels[i].front() == sBedTimeMovie)
+        if(sChannels[i].movies.front() == sBedTimeMovie)
         {
-            Movie* m = sChannels[i].front();
-            sChannels[i].pop_front();
-            sChannels[i].push_back(m);
+            Movie* m = sChannels[i].movies.front();
+            sChannels[i].movies.pop_front();
+            sChannels[i].movies.push_back(m);
         }            
     }
 
@@ -937,8 +769,7 @@ static void BuildChannels()
 
     for(size_t i = 0; i < sChannels.size(); ++i)
     {    
-        Movie* m = sChannels[i].front();
-        GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&m->offset));
+        GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&sChannels[i].startedPlaying));
     }
 }
 
@@ -965,7 +796,7 @@ static void SaveChannelPositions()
     
     for(size_t i = 0; i < sChannels.size(); ++i)
     {
-        const Movie& movie = *sChannels[i].front();
+        const Movie& movie = *sChannels[i].movies.front();
         
         TCHAR channelNum[8];
         _sntprintf(channelNum, ARRAY_COUNT(channelNum), TEXT("%d\n"), i);
@@ -989,31 +820,21 @@ static void SaveChannelPositions()
 
 static void StopMovie()
 {
-    Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->front();
-
-    if(sMediaControl && FAILED(sMediaControl->Stop()))
-    {
-        TCHAR logBuffer[512];
-        _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Stop failed\n"));
-        OutputDebugString(logBuffer);
-    }
-    
-    if(sMediaEvent)
-    {
-        sMediaEvent->SetNotifyWindow((OAHWND)NULL, WM_GRAPHNOTIFY, 0);
-    }
-    
-    bool stopped = (sGraphBuilder != NULL);
-    
-    SafeRelease(sWindowlessControl);
-    SafeRelease(sBasicAudio);
-    SafeRelease(sMediaEvent);
-    SafeRelease(sMediaControl);
-    SafeRelease(sGraphBuilder);
+    Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->movies.front();
 
     Assert(InvalidateRect(NULL, NULL, TRUE));
-    
+        
     gPlayingState = PM_IDLE;
+
+    bool stopped = (sVlcPlayer != NULL);
+
+    if(sVlcPlayer)
+    {
+       libvlc_media_player_stop(sVlcPlayer);
+       libvlc_media_player_release(sVlcPlayer);
+       sVlcPlayer = NULL;
+    }
+
 
     if(stopped)
     {
@@ -1023,12 +844,22 @@ static void StopMovie()
     }
 }
 
-// Converts float (dB) to long (100'ths of a dB)
-long GetLogVolume()
+static inline float DecibelsToVolume(float decibels)
+{
+    return(powf(10.0, decibels / 20.f));
+}
+
+static inline float VolumeToDecibels(float volume)
+{
+    return(20.f * log10f(volume));
+}
+
+// Converts float (dB) to VLC volume (0 = mute, 100 = nominal / 0dB)
+static int GetVlcVolume()
 {
     if(sMute)
     {
-        return(-100 * 100);
+        return(0);
     }
 
     float volume = sVolume + GAIN_HEADROOM;
@@ -1048,42 +879,52 @@ long GetLogVolume()
         }
         else if(sSleepTime < now)
         {
-            return(-100 * 100);
+            return(0);
         }
     }
 
-    long lVolume = static_cast<long>(volume * 100.f);
-    Assert(lVolume >= -100000);
-    Assert(lVolume <= 0);
-
-    return(lVolume);
+    int vlcVolume = Round(100.f * DecibelsToVolume(volume));
+    return(Clamp(vlcVolume, 0, 100));
 }
 
 static void AdvanceCurrentChannel()
 {
     for(;;)
     {
-        Movie* m = sCurrentChannel->front();
-        sCurrentChannel->pop_front();
-        sCurrentChannel->push_back(m);
+        Movie* m = sCurrentChannel->movies.front();
+        sCurrentChannel->movies.pop_front();
+        sCurrentChannel->movies.push_back(m);
      
-        m = sCurrentChannel->front();
+        m = sCurrentChannel->movies.front();
         
+        GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&sCurrentChannel->startedPlaying));
+
         if(m == sBedTimeMovie)
         {
             continue;
         }
         
-        GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&m->offset));
         break;
     }
 
     LoadChannelCovers();
 }
 
+static void OnEndReached(const libvlc_event_t*, void*)
+{
+    OutputDebugString(TEXT("Movie Complete\n"));
+    PostMessage(sWindowHandle, WM_MOVIE_COMPLETED, 0, 0);
+}
+
+static void OnPlayerError(const libvlc_event_t*, void*)
+{
+    OutputDebugString(TEXT("Player Error\n"));
+    PostMessage(sWindowHandle, WM_MOVIE_COMPLETED, 0, 0);
+}
+
 static void PlayMovieEx(Movie& movie, PlayingState newState)
 {
-    if(sGraphBuilder)
+    if(sVlcPlayer)
     {
         StopMovie();
     }
@@ -1101,87 +942,83 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
         sVolume = 0.f;
     }
 
-    Assert(!FAILED(CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, reinterpret_cast<void**>(&sGraphBuilder))));
-    Assert(!FAILED(sGraphBuilder->QueryInterface(IID_IMediaEventEx, reinterpret_cast<void**>(&sMediaEvent))));
-    Assert(!FAILED(sGraphBuilder->QueryInterface(IID_IMediaControl, reinterpret_cast<void**>(&sMediaControl))));
-    Assert(!FAILED(sGraphBuilder->QueryInterface(IID_IBasicAudio, reinterpret_cast<void**>(&sBasicAudio))));
+    gPlayingState = newState;
+    
+    char moviePath[MAX_PATH]; // VLC doesn't do wide chars it seems
+    libvlc_media_t* media = NULL;
 
-    sMediaEvent->SetNotifyWindow((OAHWND)sWindowHandle, WM_GRAPHNOTIFY, 0);
+    if(WideCharToMultiByte
+    (
+        CP_ACP,
+        0,
+        movie.path,
+        -1,
+        moviePath,
+        ARRAY_COUNT(moviePath),
+        NULL,
+        NULL
+    ))
+    {
+        media = libvlc_media_new_path(sVlc, moviePath);
+    }
 
-    IBaseFilter* videoMixingRenderer = NULL; 
-    Assert(!FAILED(CoCreateInstance(CLSID_VideoMixingRenderer, NULL, CLSCTX_INPROC, IID_IBaseFilter, reinterpret_cast<void**>(&videoMixingRenderer)))); 
-    Assert(!FAILED(sGraphBuilder->AddFilter(videoMixingRenderer, TEXT("Video Mixing Renderer"))));
-    
-    // Set the rendering mode.  
-    IVMRFilterConfig* filterConfig = NULL; 
-    Assert(!FAILED(videoMixingRenderer->QueryInterface(IID_IVMRFilterConfig, reinterpret_cast<void**>(&filterConfig)))); 
-    Assert(!FAILED(filterConfig->SetRenderingMode(VMRMode_Windowless))); 
-    SafeRelease(filterConfig); 
-    
-    // Set the window. 
-    Assert(!FAILED(videoMixingRenderer->QueryInterface(IID_IVMRWindowlessControl, reinterpret_cast<void**>(&sWindowlessControl))));
-    Assert(!FAILED(sWindowlessControl->SetVideoClippingWindow(sWindowHandle))); 
-    Assert(!FAILED(sWindowlessControl->SetAspectRatioMode(VMR_ARMODE_LETTER_BOX))); 
-    videoMixingRenderer->Release(); 
-    
-    if(FAILED(sGraphBuilder->RenderFile(movie.path, NULL)))
+    if(!media)
     {
         TCHAR logBuffer[512];
-        _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Could not render file %s\n"), movie.path);
+        _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Could not load media %s\n"), movie.path);
         OutputDebugString(logBuffer);
         return;
     }
 
-    SetVideoSize();
-    
-    sBasicAudio->put_Volume(GetLogVolume());
-    
-    if(newState == PM_PLAYING)
-    {
-        IMediaPosition* mediaPosition = NULL;
-        Assert(!FAILED(sGraphBuilder->QueryInterface(IID_IMediaPosition, reinterpret_cast<void**>(&mediaPosition))));
-        Assert(mediaPosition);
+    libvlc_media_parse(media);
+    const libvlc_time_t length = libvlc_media_get_duration(media);
 
-        // Double-check cached duration:
-        REFTIME duration = 0; // seconds [double]
-        Assert(!FAILED(mediaPosition->get_Duration(&duration)));
-        __int64 nsDuration = static_cast<__int64>(duration * REFTIME_TO_FILE_TIME);
-        
-        if(movie.duration != nsDuration)
-        {
-            movie.duration = nsDuration;
-            SaveDuration(movie);
-        }
-        
+    sVlcPlayer = libvlc_media_player_new_from_media(media);
+    libvlc_media_release(media);
+    media = NULL;
+
+    if(!sVlcPlayer)
+    {
+        TCHAR logBuffer[512];
+        _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Could not create player for %s\n"), movie.path);
+        OutputDebugString(logBuffer);
+        return;
+    }
+
+    libvlc_event_manager_t* eventManager = libvlc_media_player_event_manager(sVlcPlayer);
+    Assert(eventManager);
+
+    libvlc_media_player_set_hwnd(sVlcPlayer, sWindowHandle);
+    
+    libvlc_video_set_key_input(sVlcPlayer, false);
+    libvlc_video_set_mouse_input(sVlcPlayer, false);
+    libvlc_media_player_play(sVlcPlayer);
+
+    if((newState == PM_PLAYING) && (length > 0))
+    {
         __int64 systemTime = {0}; // 100-nanosecond intervals since January 1, 1601 
         GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&systemTime));
-        Assert(movie.offset && (systemTime >= movie.offset));
-        __int64 nsPosition = (systemTime - movie.offset);
-        
-        REFTIME position = static_cast<REFTIME>(nsPosition) * FILE_TIME_REFTIME;
-        
-        REFTIME maxPosition = duration - 10.f;
-        position = std::min(position, maxPosition);
-        
-        if(FAILED(mediaPosition->put_CurrentPosition(position)))
+        Assert(sCurrentChannel->startedPlaying && (sCurrentChannel->startedPlaying <= systemTime));
+
+        libvlc_time_t offset = (systemTime - sCurrentChannel->startedPlaying) / VLCTIME_TO_FILE_TIME;
+
+        if(length < offset)
         {
-            TCHAR logBuffer[512];
-            _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Could not restart position %f for file %s\n"), position, movie.path);
-            OutputDebugString(logBuffer);
+            OutputDebugString(TEXT("Play aborted; movie finished in background\n"));
+            libvlc_media_player_stop(sVlcPlayer);
+            PostMessage(sWindowHandle, WM_MOVIE_COMPLETED, 0, 0);
+            return;
         }
-
-        SafeRelease(mediaPosition);
-    }
-
-    if(FAILED(sMediaControl->Run()))
-    {
-        TCHAR logBuffer[512];
-        _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Could not run graph for file %s\n"), movie.path);
-        OutputDebugString(logBuffer);
-        return;
+        else if(offset)
+        {
+            libvlc_media_player_set_time(sVlcPlayer, offset);
+        }
     }
     
-    gPlayingState = newState;
+    libvlc_audio_set_volume(sVlcPlayer, GetVlcVolume());
+    
+    Assert(!libvlc_event_attach(eventManager, libvlc_MediaPlayerEndReached, &OnEndReached, NULL));
+    Assert(!libvlc_event_attach(eventManager, libvlc_MediaPlayerEncounteredError, &OnPlayerError, NULL));
     
     Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
     
@@ -1199,18 +1036,12 @@ static void PlayMovie()
         return;
     }
     
-    Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->front();
+    Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->movies.front();
     
     if(gPlayingState == PM_PAUSED)
     {
-        if(FAILED(sMediaControl->Run()))
-        {
-            TCHAR logBuffer[512];
-            _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Could not unpause graph for file %s\n"), movie.path);
-            OutputDebugString(logBuffer);
-        }
-        
-        SetVideoSize();
+        libvlc_media_player_play(sVlcPlayer);
+
         Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
         
         gPlayingState = PM_PLAYING;
@@ -1235,26 +1066,13 @@ static void PlayMovie()
     }
 }
 
-// Returns true if paused; false if rewound
 static void PauseMovie()
 {
-    Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->front();
-
-    IMediaPosition* mediaPosition = NULL;
-    Assert(!FAILED(sGraphBuilder->QueryInterface(IID_IMediaPosition, reinterpret_cast<void**>(&mediaPosition))));
-    Assert(mediaPosition);
-    
-    SafeRelease(mediaPosition);
-
-    if(FAILED(sMediaControl->Stop()))
-    {
-        TCHAR logBuffer[512];
-        _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Could not pause graph\n"));
-        OutputDebugString(logBuffer);
-        return;
-    }
+    Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->movies.front();
 
     gPlayingState = PM_PAUSED;
+
+    libvlc_media_player_stop(sVlcPlayer);
 
     Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
     
@@ -1284,47 +1102,12 @@ static void OnMovieComplete()
     }
     else if(prevState != PM_TIMEOUT)
     {
-        if(sSleepTime)
-        {
-            GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&sBedTimeMovie->offset));
-        }
-        else
-        {
-            AdvanceCurrentChannel();
-        }
+        AdvanceCurrentChannel();
     }
         
     Microphone::SetSensitivity(sMicrophoneSensitivity);
     PlayMovie();
 }   
-
-static void HandleGraphNotify()
-{
-    long eventCode = 0;
-    LONG_PTR params[2] = {0};
-
-    bool movieCompleted = false;
-
-    while(sMediaEvent && (sMediaEvent->GetEvent(&eventCode, &params[0], &params[1], 0) == S_OK))
-    {
-        //TCHAR line[256];
-        //_sntprintf(line, ARRAY_COUNT(line), TEXT("Media event 0x%08X\n"), eventCode);
-        //OutputDebugString(line);
-
-        if((eventCode == EC_COMPLETE) || (eventCode == EC_USERABORT))
-        {
-            movieCompleted = true;
-        }
-
-        sMediaEvent->FreeEventParams(eventCode, params[0], params[1]);
-    }
-
-    if(movieCompleted)
-    {
-        OutputDebugString(TEXT("Movie Complete\n"));
-        OnMovieComplete();
-    }
-}
 
 static void HandleRemoteButton(size_t buttonId)
 {
@@ -1341,12 +1124,7 @@ static void HandleRemoteButton(size_t buttonId)
     //    return;
     //}
 
-    if(sLockToMovie)
-    {
-        return;
-    }
-
-    ChannelMovies& channel = sChannels[buttonId % sChannels.size()];
+    Channel& channel = sChannels[buttonId % sChannels.size()];
 
     if(&channel == sCurrentChannel)
     {
@@ -1356,17 +1134,6 @@ static void HandleRemoteButton(size_t buttonId)
 
     StopMovie();
     sCurrentChannel = &channel;
-
-    Movie& movie = *channel.front();
-
-    __int64 systemTime = {0}; // 100-nanosecond intervals since January 1, 1601 
-    GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&systemTime));
-    __int64 nsPosition = systemTime - movie.offset;
-    
-    if(nsPosition >= movie.duration)
-    {
-        AdvanceCurrentChannel();
-    }
 
     PlayMovie();
 }
@@ -1444,7 +1211,7 @@ static void OnTimeout()
 
 static void NextChannel()
 {
-    if(gMovies.empty() || sSleepTime || sLockToMovie)
+    if(gMovies.empty() || sSleepTime)
     {
         return;
     }
@@ -1473,7 +1240,7 @@ static void NextChannel()
 
 static void PrevChannel()
 {
-    if(gMovies.empty() || sSleepTime || sLockToMovie)
+    if(gMovies.empty() || sSleepTime)
     {
         return;
     }
@@ -1735,7 +1502,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
             Movie* movie = reinterpret_cast<Movie*>(lParam);
             Assert(movie);
 
-            const Movie* currentMovie = sSleepTime ? sBedTimeMovie : sCurrentChannel->front();
+            const Movie* currentMovie = sSleepTime ? sBedTimeMovie : sCurrentChannel->movies.front();
 
             if(movie == currentMovie)
             {
@@ -1744,12 +1511,12 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
             return(0);   
         }
         
-        case WM_GRAPHNOTIFY:
+        case WM_MOVIE_COMPLETED:
         {
-            HandleGraphNotify();
+            OnMovieComplete();
             return(0);
-        }
-        
+        };
+
         case WM_REMOTE_BUTTON:
         {
             HandleRemoteButton(static_cast<size_t>(wParam));
@@ -1795,15 +1562,13 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     StartThreads();
                 }
                 
-                SetVideoSize();
-               
                 return(0);
             }
             else if(wParam == SET_VOLUME_TIMER)
             {
-                if(sBasicAudio)
+                if(sVlcPlayer)
                 {
-                    sBasicAudio->put_Volume(GetLogVolume());
+                    libvlc_audio_set_volume(sVlcPlayer, GetVlcVolume());
                 }
 
                 if(sSleepTime)
@@ -1885,19 +1650,9 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
             {
                 OnPaintCover(windowHandle, paintStruct);
             }
-            else
-            {
-                OnPaintMovie(windowHandle, paintStruct);
-            }
 
             Assert(EndPaint(windowHandle, &paintStruct));
         
-            return(0);
-        }
-        
-        case WM_DISPLAYCHANGE:
-        {
-            sWindowlessControl->DisplayModeChanged();
             return(0);
         }
 
@@ -1949,7 +1704,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     HMENU subMenu = CreatePopupMenu();
                     Assert(subMenu);
 
-                    TCHAR* moviePath = sChannels[i].front()->path;
+                    TCHAR* moviePath = sChannels[i].movies.front()->path;
                     TCHAR* baseName = FindBaseName(moviePath);
                     size_t dirLen = static_cast<size_t>(baseName - moviePath);
                     
@@ -1961,8 +1716,8 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     
                     Assert(AppendMenu(channelMenu, MF_POPUP | MF_STRING, reinterpret_cast<UINT_PTR>(subMenu), label));
 
-                    MakeChannelSubMenu(subMenu, playMovieId, sChannels[i]);
-                    playMovieId += sChannels[i].size();
+                    MakeChannelSubMenu(subMenu, playMovieId, sChannels[i].movies);
+                    playMovieId += sChannels[i].movies.size();
                 }
             }
             
@@ -2075,15 +1830,6 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
 
             Assert(AppendMenu(menuHandle, MF_STRING | MF_ENABLED, COMMAND_RESTART_MOVIE, TEXT("Restart Movie")));
 
-            if(sLockToMovie)
-            {
-                Assert(AppendMenu(menuHandle, MF_CHECKED | MF_STRING | MF_ENABLED, COMMAND_LOCK_TO_MOVIE, TEXT("Lock to Movie")));
-            }
-            else
-            {
-                Assert(AppendMenu(menuHandle, MF_STRING | MF_ENABLED, COMMAND_LOCK_TO_MOVIE, TEXT("Lock to Movie")));
-            }
-            
             Assert(AppendMenu(menuHandle, MF_STRING | MF_ENABLED, COMMAND_QUIT, TEXT("Quit\tAlt+F4")));
 
             TrackPopupMenu(menuHandle, TPM_TOPALIGN | TPM_LEFTALIGN, p.x, p.y, 0, windowHandle, NULL);
@@ -2135,26 +1881,12 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                 
                 case COMMAND_RESTART_MOVIE:
                 {
-                    if(sGraphBuilder && (gPlayingState <= PM_PLAYING))
+                    if(sVlcPlayer && (gPlayingState <= PM_PLAYING))
                     {
-                        IMediaPosition* mediaPosition = NULL;
-                        Assert(!FAILED(sGraphBuilder->QueryInterface(IID_IMediaPosition, reinterpret_cast<void**>(&mediaPosition))));
-                        Assert(mediaPosition);
-
-                        REFTIME currentPos = 0;
-                        Assert(!FAILED(mediaPosition->put_CurrentPosition(currentPos)));
-
-                        SafeRelease(mediaPosition);
+                        libvlc_media_player_set_position(sVlcPlayer, 0.f);
                     }
-                    
-                    GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&sCurrentChannel->front()->offset));
-                    
-                    return(0);
-                }
-                
-                case COMMAND_LOCK_TO_MOVIE:
-                {
-                    sLockToMovie = !sLockToMovie;
+
+                    GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&sCurrentChannel->startedPlaying));
                     return(0);
                 }
             }
@@ -2163,9 +1895,9 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
             {
                 sVolume = VOLUME_QUANTUM * static_cast<float>(COMMAND_VOLUME_NONE - LOWORD(wParam));
                 
-                if(sBasicAudio)
+                if(sVlcPlayer)
                 {
-                    sBasicAudio->put_Volume(GetLogVolume());
+                    libvlc_audio_set_volume(sVlcPlayer, GetVlcVolume());
                 }
 
                 SaveVolumeForMovie();
@@ -2192,9 +1924,9 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                 
                 for(size_t c = 0; c < sChannels.size(); ++c)
                 {
-                    if(index >= sChannels[c].size())
+                    if(index >= sChannels[c].movies.size())
                     {
-                        index -= sChannels[c].size();
+                        index -= sChannels[c].movies.size();
                         continue;
                     }
                     
@@ -2202,17 +1934,15 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     
                     while(index)
                     {
-                        Movie* movie = sCurrentChannel->front();
-                        sCurrentChannel->pop_front();
-                        sCurrentChannel->push_back(movie);
+                        Movie* movie = sCurrentChannel->movies.front();
+                        sCurrentChannel->movies.pop_front();
+                        sCurrentChannel->movies.push_back(movie);
                         --index;
                     }
                             
                     LoadChannelCovers();
                     
-                    Movie* movie = sCurrentChannel->front();
-                    
-                    GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&movie->offset));
+                    GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&sCurrentChannel->startedPlaying));
                     
                     if(wasPlaying)
                     {
@@ -2265,7 +1995,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
 
                 Assert(InvalidateRect(windowHandle, NULL, TRUE));
                 
-                GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&sBedTimeMovie->offset));
+                GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&sCurrentChannel->startedPlaying));
 
                 if(sSleepTime && (gPlayingState == PM_IDLE))
                 {
@@ -2755,8 +2485,15 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     srand(static_cast<unsigned>(time(NULL)));
     Assert(!FAILED(CoInitialize(NULL)));
 
+    const char* args[] = { "--no-osd" } ;
+    sVlc = libvlc_new(ARRAY_COUNT(args), args);
+
+    if(!sVlc)
+    {
+        return(-1);
+    }
+
     FindMovies();
-    LoadMovieDurations();
     BuildChannels();
     LoadBedTimeMovie();
     LoadSensitivity();
@@ -2766,7 +2503,6 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     InitRemote();
     StartThreads();
     
-    TelnetShell::Initialize(sWindowHandle);
     Microphone::Initialize(sWindowHandle);
     Microphone::SetSensitivity(sMicrophoneSensitivity);
     
@@ -2792,7 +2528,6 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     } 
 
     Microphone::Shutdown();
-    TelnetShell::Shutdown();
     
     Assert(StopThreads());
     ShutdownRemote();
@@ -2803,6 +2538,12 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     ShutdownMovies();
     SaveSensitivity();
     
+    if(sVlc)
+    {
+        libvlc_release(sVlc);
+        sVlc = NULL;
+    }
+
     CoUninitialize();
     
     return(0);

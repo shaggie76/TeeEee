@@ -31,7 +31,6 @@ float DEFAULT_SENSITIVITY = -20.f;
 float sPeakSensitivity = DEFAULT_SENSITIVITY;
 const float MODERATE_BIAS = -11.f;
 
-static HMODULE sFFTW = NULL;
 static HWND sWindowHandle = NULL;
 
 static inline float VolumeToDecibels(float volume)
@@ -199,45 +198,6 @@ static void CALLBACK WaveInProc(HWAVEIN waveInHandle, UINT message, DWORD_PTR, D
 
 void Microphone::Initialize(HWND windowHandle)
 {
-    TCHAR fftw[MAX_PATH];
-    Assert(GetModuleFileName(GetModuleHandle(NULL), fftw, ARRAY_COUNT(fftw)));
-
-    TCHAR* dirSep = _tcsrchr(fftw, '\\');
-    Assert(dirSep);
-    
-#ifdef _M_X64
-    const TCHAR* FFTW_DLL_PATH = TEXT("FFTW\\x64\\libfftw3f-3.dll");
-#else
-    const TCHAR* FFTW_DLL_PATH = TEXT("FFTW\\x86\\libfftw3f-3.dll");
-#endif
-    
-    _tcscpy(dirSep + 1, FFTW_DLL_PATH);
-    
-    sFFTW = LoadLibrary(fftw);
-    
-    if(!sFFTW)
-    {
-        Assert(GetModuleFileName(GetModuleHandle(NULL), fftw, ARRAY_COUNT(fftw)));
-
-        for(size_t i = 0; i < 2; ++i)
-        {
-            TCHAR* dirSep = _tcsrchr(fftw, '\\');
-            Assert(dirSep);
-            *dirSep = '\0';
-        }
-        
-        TCHAR* dirSep = _tcsrchr(fftw, '\\');
-        Assert(dirSep);
-        _tcscpy(dirSep + 1, FFTW_DLL_PATH);
-        sFFTW = LoadLibrary(fftw);
-    }
-    
-    if(!sFFTW)
-    {
-        MessageBox(NULL, TEXT("Could not find FFTW dll"), TEXT("TeeEee"), MB_OK | MB_ICONERROR);
-        exit(0);
-    }
-
     sWindowHandle = windowHandle;
     sShutdown = false;
     sActivePackets = PACKETS;

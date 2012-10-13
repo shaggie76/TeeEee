@@ -18,8 +18,6 @@ struct Movie
     };
     
     volatile State state;
-    __int64     offset;
-    __int64     duration;
 };
 
 typedef std::vector<Movie> Movies;
