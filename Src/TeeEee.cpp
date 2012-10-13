@@ -15,7 +15,6 @@
 
 /*
 TODO: should be able to fade to black now
-
 */
 
 typedef std::deque<Movie*> ChannelMovies;
@@ -96,6 +95,7 @@ static size_t sTimeoutIndex = 0;
 
 static libvlc_instance_t* sVlc = NULL;
 static libvlc_media_player_t* sVlcPlayer = NULL;
+static libvlc_time_t sPauseTime = -1;
 
 // ms / 100-nanonseconds
 // 1E-3 / 100E-9
@@ -884,7 +884,8 @@ static int GetVlcVolume()
         }
     }
 
-    int vlcVolume = Round(100.f * DecibelsToVolume(volume));
+    // technically has 0-100 range but to match VLC GUI it seems like we start at 50%
+    int vlcVolume = Round(50.f * DecibelsToVolume(volume));
     return(Clamp(vlcVolume, 0, 100));
 }
 
@@ -1033,6 +1034,17 @@ static void PlayMovie()
     {
         libvlc_media_player_play(sVlcPlayer);
 
+        if(sPauseTime > 0)
+        {
+            libvlc_media_player_set_time(sVlcPlayer, sPauseTime);
+
+            __int64 systemTime = {0}; // 100-nanosecond intervals since January 1, 1601 
+            GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&systemTime));
+            Assert(sCurrentChannel->startedPlaying && (sCurrentChannel->startedPlaying <= systemTime));
+
+            sCurrentChannel->startedPlaying = systemTime - (sPauseTime * VLCTIME_TO_FILE_TIME);
+        }
+
         Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
         
         gPlayingState = PM_PLAYING;
@@ -1063,6 +1075,7 @@ static void PauseMovie()
 
     gPlayingState = PM_PAUSED;
 
+    sPauseTime = libvlc_media_player_get_time(sVlcPlayer);
     libvlc_media_player_stop(sVlcPlayer);
 
     Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
