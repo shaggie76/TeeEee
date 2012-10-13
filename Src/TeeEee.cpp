@@ -68,7 +68,7 @@ const time_t PRELOAD_DECAY = 1;
 
 const float VOLUME_QUANTUM = 1.f;
 
-const float GAIN_HEADROOM = -3.f * VOLUME_QUANTUM;
+const float GAIN_HEADROOM = (-3.f * VOLUME_QUANTUM) - 3.f;
 
 const float MIN_VOLUME = -3.f * VOLUME_QUANTUM;
 const float MAX_VOLUME = 3.f * VOLUME_QUANTUM;
@@ -705,7 +705,8 @@ static void BuildChannels()
         sChannels.back().movies.push_back(&movie);
     }
     
-    sCurrentChannel = &sChannels[rand() % sChannels.size()];
+    /* sCurrentChannel = &sChannels[rand() % sChannels.size()]; */
+    sCurrentChannel = &sChannels[8];
 
     HKEY key = NULL;
     
@@ -884,8 +885,8 @@ static int GetVlcVolume()
         }
     }
 
-    // technically has 0-100 range but to match VLC GUI it seems like we start at 50%
-    int vlcVolume = Round(50.f * DecibelsToVolume(volume));
+    //  has 0-100 linear range
+    int vlcVolume = Round(100.f * DecibelsToVolume(volume));
     return(Clamp(vlcVolume, 0, 100));
 }
 
@@ -943,8 +944,6 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
     {
         sVolume = 0.f;
     }
-
-    gPlayingState = newState;
     
     char moviePath[MAX_PATH]; // VLC doesn't do wide chars it seems
     libvlc_media_t* media = NULL;
@@ -983,6 +982,8 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
         OutputDebugString(logBuffer);
         return;
     }
+
+    gPlayingState = newState;
 
     libvlc_event_manager_t* eventManager = libvlc_media_player_event_manager(sVlcPlayer);
     Assert(eventManager);
@@ -2492,7 +2493,8 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     const char* args[] =
     {
         "--no-osd",
-        "--audio-filter=compressor"
+        "--audio-filter=compressor",
+        "--no-ignore-config"
     };
 
     sVlc = libvlc_new(ARRAY_COUNT(args), args);
