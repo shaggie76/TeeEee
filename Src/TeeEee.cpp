@@ -14,7 +14,7 @@
 #include <vlc/vlc.h>
 
 /*
-- context menu gone (stop movie 1st?)
+AGC
 */
 
 typedef std::deque<Movie*> ChannelMovies;
@@ -970,9 +970,6 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
         return;
     }
 
-    libvlc_media_parse(media);
-    const libvlc_time_t length = libvlc_media_get_duration(media);
-
     sVlcPlayer = libvlc_media_player_new_from_media(media);
     libvlc_media_release(media);
     media = NULL;
@@ -993,8 +990,11 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
     libvlc_video_set_key_input(sVlcPlayer, false);
     libvlc_video_set_mouse_input(sVlcPlayer, false);
     libvlc_media_player_play(sVlcPlayer);
+        
+    Assert(!libvlc_event_attach(eventManager, libvlc_MediaPlayerEndReached, &OnEndReached, NULL));
+    Assert(!libvlc_event_attach(eventManager, libvlc_MediaPlayerEncounteredError, &OnPlayerError, NULL));
 
-    if((newState == PM_PLAYING) && (length > 0))
+    if(newState == PM_PLAYING)
     {
         __int64 systemTime = {0}; // 100-nanosecond intervals since January 1, 1601 
         GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&systemTime));
@@ -1002,23 +1002,13 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
 
         libvlc_time_t offset = (systemTime - sCurrentChannel->startedPlaying) / VLCTIME_TO_FILE_TIME;
 
-        if(length < offset)
-        {
-            OutputDebugString(TEXT("Play aborted; movie finished in background\n"));
-            libvlc_media_player_stop(sVlcPlayer);
-            PostMessage(sWindowHandle, WM_MOVIE_COMPLETED, 0, 0);
-            return;
-        }
-        else if(offset)
+        if(offset)
         {
             libvlc_media_player_set_time(sVlcPlayer, offset);
         }
     }
     
     libvlc_audio_set_volume(sVlcPlayer, GetVlcVolume());
-    
-    Assert(!libvlc_event_attach(eventManager, libvlc_MediaPlayerEndReached, &OnEndReached, NULL));
-    Assert(!libvlc_event_attach(eventManager, libvlc_MediaPlayerEncounteredError, &OnPlayerError, NULL));
     
     Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
     
