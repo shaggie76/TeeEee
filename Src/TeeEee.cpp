@@ -705,8 +705,7 @@ static void BuildChannels()
         sChannels.back().movies.push_back(&movie);
     }
     
-    /* sCurrentChannel = &sChannels[rand() % sChannels.size()]; */
-    sCurrentChannel = &sChannels[8];
+    sCurrentChannel = &sChannels[rand() % sChannels.size()];
 
     HKEY key = NULL;
     
