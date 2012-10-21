@@ -825,11 +825,9 @@ static void SaveChannelPositions()
 
 static void StopMovie()
 {
-    Assert(KillTimer(sWindowHandle, SET_VOLUME_TIMER));
+    KillTimer(sWindowHandle, SET_VOLUME_TIMER); // not checking return value
 
     Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->movies.front();
-
-    Assert(InvalidateRect(NULL, NULL, TRUE));
         
     gPlayingState = PM_IDLE;
 
@@ -851,6 +849,8 @@ static void StopMovie()
         OutputDebugString(movie.name);
         OutputDebugString(TEXT("\n"));
     }
+    
+    Assert(InvalidateRect(NULL, NULL, TRUE));
 }
 
 static inline float DecibelsToVolume(float decibels)
