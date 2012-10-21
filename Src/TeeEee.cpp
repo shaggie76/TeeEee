@@ -15,8 +15,6 @@
 
 /*
     TODO: should be able to fade to black now
-    - sometimes stuck at end of movie
-    - post-sleeptime volume jumps
     - disable agc for shush?
 */
 
@@ -827,23 +825,25 @@ static void SaveChannelPositions()
 
 static void StopMovie()
 {
+    Assert(KillTimer(sWindowHandle, SET_VOLUME_TIMER));
+
     Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->movies.front();
 
     Assert(InvalidateRect(NULL, NULL, TRUE));
         
     gPlayingState = PM_IDLE;
 
-    bool stopped = (sVlcPlayer != NULL);
+    bool stopped = false;
 
-    if(sVlcPlayer)
+    if(sVlcPlayer && libvlc_media_player_is_playing(sVlcPlayer))
     {
        libvlc_media_player_stop(sVlcPlayer);
 #ifndef RECYCLE_PLAYER_INSTANCE
        libvlc_media_player_release(sVlcPlayer);
        sVlcPlayer = NULL;
 #endif
+       stopped = true;
     }
-
 
     if(stopped)
     {
@@ -1025,6 +1025,8 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
 
     libvlc_audio_set_volume(sVlcPlayer, GetVlcVolume());
     libvlc_media_player_play(sVlcPlayer);
+
+    Assert(SetTimer(sWindowHandle, SET_VOLUME_TIMER, SET_VOLUME_DELAY, NULL));
 
     /* Assert(InvalidateRect(sWindowHandle, NULL, TRUE));*/
     
@@ -1629,8 +1631,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                         OutputDebugString(TEXT("Sleep timer done"));
                         sSleepTime = 0;
 
-                        StopMovie();    
-                        return(0);
+                        StopMovie();
                     }
                 }
                 else
@@ -1644,6 +1645,8 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                         SendMessage(windowHandle, WM_COMMAND, MAKEWPARAM((COMMAND_SLEEP_MODE + (SLEEP_INTERVALS - 1)), 0), 0);
                     }
                 }
+
+                return(0);
             }
             else if(wParam == HIDE_CURSOR_TIMER)
             {
@@ -2213,8 +2216,6 @@ static void InitWindow()
         GetModuleHandle(NULL),
         NULL
     );
-
-    Assert(SetTimer(sWindowHandle, SET_VOLUME_TIMER, SET_VOLUME_DELAY, NULL));
 
     HDC deviceContext = GetDC(sWindowHandle);
     int height = -MulDiv(12, GetDeviceCaps(deviceContext, LOGPIXELSY), 72);            
