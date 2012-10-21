@@ -14,8 +14,13 @@
 #include <vlc/vlc.h>
 
 /*
-TODO: should be able to fade to black now
+    TODO: should be able to fade to black now
+    - sometimes stuck at end of movie
+    - post-sleeptime volume jumps
+    - disable agc for shush?
 */
+
+#define RECYCLE_PLAYER_INSTANCE
 
 typedef std::deque<Movie*> ChannelMovies;
 
@@ -41,6 +46,7 @@ static WorkQueue<Movie*> sLoadWorkQueue;
 const UINT WM_LOADED_MOVIE = (WM_USER + 1); // LPARAM is Movie*
 const UINT WM_MOVIE_COMPLETED = (WM_USER + 2);
 const UINT WM_REMOTE_BUTTON = (WM_USER + 3); // WPARAM is index
+const UINT WM_LENGTH_CHANGED = (WM_USER + 4);
 
 const unsigned THREAD_STACK = 16 * 1024;
 
@@ -832,8 +838,10 @@ static void StopMovie()
     if(sVlcPlayer)
     {
        libvlc_media_player_stop(sVlcPlayer);
+#ifndef RECYCLE_PLAYER_INSTANCE
        libvlc_media_player_release(sVlcPlayer);
        sVlcPlayer = NULL;
+#endif
     }
 
 
@@ -912,24 +920,33 @@ static void AdvanceCurrentChannel()
     LoadChannelCovers();
 }
 
-static void OnEndReached(const libvlc_event_t*, void*)
+static void MovieCompletedCB(const libvlc_event_t*, void*)
 {
-    OutputDebugString(TEXT("Movie Complete\n"));
+    OutputDebugString(TEXT("MovieCompleted\n"));
     PostMessage(sWindowHandle, WM_MOVIE_COMPLETED, 0, 0);
 }
 
-static void OnPlayerError(const libvlc_event_t*, void*)
+static void PlayerErrorCB(const libvlc_event_t*, void*)
 {
-    OutputDebugString(TEXT("Player Error\n"));
+    OutputDebugString(TEXT("PlayerErrorCB\n"));
     PostMessage(sWindowHandle, WM_MOVIE_COMPLETED, 0, 0);
+}
+
+static void LengthChangedCB(const libvlc_event_t*, void*)
+{
+    // Must be deferred to main thread:
+    OutputDebugString(TEXT("LengthChangedCB\n"));
+    PostMessage(sWindowHandle, WM_LENGTH_CHANGED, 0, 0);
 }
 
 static void PlayMovieEx(Movie& movie, PlayingState newState)
 {
+#ifndef RECYCLE_PLAYER_INSTANCE
     if(sVlcPlayer)
     {
         StopMovie();
     }
+#endif // RECYCLE_PLAYER_INSTANCE
 
     if(newState == PM_PLAYING)
     {
@@ -970,49 +987,46 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
         return;
     }
 
-    sVlcPlayer = libvlc_media_player_new_from_media(media);
+#ifdef RECYCLE_PLAYER_INSTANCE
+    if(sVlcPlayer)
+    {
+       libvlc_media_player_set_media(sVlcPlayer, media);
+    }
+    else
+#endif // RECYCLE_PLAYER_INSTANCE
+    {
+        sVlcPlayer = libvlc_media_player_new_from_media(media);
+
+        if(!sVlcPlayer)
+        {
+            TCHAR logBuffer[512];
+            _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Could not create player for %s\n"), movie.path);
+            OutputDebugString(logBuffer);
+            return;
+        }
+
+        libvlc_event_manager_t* eventManager = libvlc_media_player_event_manager(sVlcPlayer);
+        Assert(eventManager);
+
+        libvlc_media_player_set_hwnd(sVlcPlayer, sWindowHandle);
+    
+        libvlc_video_set_key_input(sVlcPlayer, false);
+        libvlc_video_set_mouse_input(sVlcPlayer, false);
+        
+        Assert(!libvlc_event_attach(eventManager, libvlc_MediaPlayerEndReached, &MovieCompletedCB, NULL));
+        Assert(!libvlc_event_attach(eventManager, libvlc_MediaPlayerEncounteredError, &PlayerErrorCB, NULL));
+        Assert(!libvlc_event_attach(eventManager, libvlc_MediaPlayerLengthChanged, &LengthChangedCB, NULL));
+    }
+
     libvlc_media_release(media);
     media = NULL;
 
-    if(!sVlcPlayer)
-    {
-        TCHAR logBuffer[512];
-        _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Could not create player for %s\n"), movie.path);
-        OutputDebugString(logBuffer);
-        return;
-    }
-
     gPlayingState = newState;
 
-    libvlc_event_manager_t* eventManager = libvlc_media_player_event_manager(sVlcPlayer);
-    Assert(eventManager);
-
-    libvlc_media_player_set_hwnd(sVlcPlayer, sWindowHandle);
-    
-    libvlc_video_set_key_input(sVlcPlayer, false);
-    libvlc_video_set_mouse_input(sVlcPlayer, false);
-    libvlc_media_player_play(sVlcPlayer);
-        
-    Assert(!libvlc_event_attach(eventManager, libvlc_MediaPlayerEndReached, &OnEndReached, NULL));
-    Assert(!libvlc_event_attach(eventManager, libvlc_MediaPlayerEncounteredError, &OnPlayerError, NULL));
-
-    if(newState == PM_PLAYING)
-    {
-        __int64 systemTime = {0}; // 100-nanosecond intervals since January 1, 1601 
-        GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&systemTime));
-        Assert(sCurrentChannel->startedPlaying && (sCurrentChannel->startedPlaying <= systemTime));
-
-        libvlc_time_t offset = (systemTime - sCurrentChannel->startedPlaying) / VLCTIME_TO_FILE_TIME;
-
-        if(offset)
-        {
-            libvlc_media_player_set_time(sVlcPlayer, offset);
-        }
-    }
-    
     libvlc_audio_set_volume(sVlcPlayer, GetVlcVolume());
-    
-    Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
+    libvlc_media_player_play(sVlcPlayer);
+
+    /* Assert(InvalidateRect(sWindowHandle, NULL, TRUE));*/
     
     OutputDebugString(TEXT("Started "));
     OutputDebugString(movie.name);
@@ -1111,7 +1125,31 @@ static void OnMovieComplete()
         
     Microphone::SetSensitivity(sMicrophoneSensitivity);
     PlayMovie();
-}   
+}
+
+static void OnLengthChanged()
+{
+    if(gPlayingState != PM_PLAYING)
+    {
+        return;
+    }
+
+    __int64 systemTime = {0}; // 100-nanosecond intervals since January 1, 1601 
+    GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&systemTime));
+    Assert(sCurrentChannel->startedPlaying && (sCurrentChannel->startedPlaying <= systemTime));
+
+    libvlc_time_t length = libvlc_media_player_get_length(sVlcPlayer);
+    libvlc_time_t offset = (systemTime - sCurrentChannel->startedPlaying) / VLCTIME_TO_FILE_TIME;
+
+    if(offset + (20 * 1000) > length)
+    {
+        OnMovieComplete();
+    }
+    else if(offset > (5 * 1000))
+    {
+        libvlc_media_player_set_time(sVlcPlayer, offset);
+    }
+}
 
 static void HandleRemoteButton(size_t buttonId)
 {
@@ -1520,6 +1558,12 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
             OnMovieComplete();
             return(0);
         };
+
+        case WM_LENGTH_CHANGED:
+        {
+            OnLengthChanged();
+            return(0);
+        }
 
         case WM_REMOTE_BUTTON:
         {
@@ -2536,6 +2580,13 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
         TranslateMessage(&msg); 
         DispatchMessage(&msg);
     } 
+
+    if(sVlcPlayer)
+    {
+       libvlc_media_player_stop(sVlcPlayer);
+       libvlc_media_player_release(sVlcPlayer);
+       sVlcPlayer = NULL;
+    }
 
     Microphone::Shutdown();
     
