@@ -1,7 +1,7 @@
 #ifndef MICROPHONE_H
 #define MICROPHONE_H
 
-namespace Microphone
+namespace TEMicrophone
 {
     extern void Initialize(HWND windowHandle);
     extern void Shutdown();

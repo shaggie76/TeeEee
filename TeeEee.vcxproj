@@ -87,7 +87,7 @@
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>Res;FFTW;VLC\sdk\Include;$(DXSDK_DIR)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;WIN32_LEAN_AND_MEAN;_WIN32_WINDOWS=0x0410;_WIN32_WINNT=0x0501;DIRECTINPUT_VERSION=0x0800;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;WIN32_LEAN_AND_MEAN;DIRECTINPUT_VERSION=0x0800;_NT_TARGET_VERSION=$(_NT_TARGET_VERSION_VISTA);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>true</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
@@ -102,7 +102,6 @@
       <AdditionalIncludeDirectories>Res;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>Strmiids.lib;Dinput8.lib;dxguid.lib;Winmm.lib;libvlccore.lib;libvlc.lib;libfftw3f-3.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x86;FFTW\x86;VLC\sdk\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <DelayLoadDLLs>
       </DelayLoadDLLs>
@@ -146,7 +145,6 @@
       <AdditionalIncludeDirectories>Res;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>Strmiids.lib;Dinput8.lib;dxguid.lib;Winmm.lib;libfftw3f-3.lib;libvlccore.lib;libvlc.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x64;FFTW\x64;VLC\sdk\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <DelayLoadDLLs>
       </DelayLoadDLLs>
@@ -162,7 +160,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <AdditionalIncludeDirectories>Res;FFTW;VLC\sdk\Include;$(DXSDK_DIR)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;WIN32_LEAN_AND_MEAN;_WIN32_WINDOWS=0x0410;_WIN32_WINNT=0x0501;DIRECTINPUT_VERSION=0x0800;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;WIN32_LEAN_AND_MEAN;DIRECTINPUT_VERSION=0x0800;_NT_TARGET_VERSION=$(_NT_TARGET_VERSION_VISTA);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>TeeEeePch.h</PrecompiledHeaderFile>
@@ -181,7 +179,6 @@
       <AdditionalIncludeDirectories>Res;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>Strmiids.lib;Dinput8.lib;dxguid.lib;Winmm.lib;libvlccore.lib;libvlc.lib;libfftw3f-3.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x86;FFTW\x86;VLC\sdk\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <DelayLoadDLLs>
       </DelayLoadDLLs>
@@ -214,7 +211,6 @@
       <AdditionalIncludeDirectories>Res;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>Strmiids.lib;Dinput8.lib;dxguid.lib;Winmm.lib;libfftw3f-3.lib;libvlccore.lib;libvlc.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x64;FFTW\x64;VLC\sdk\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <DelayLoadDLLs>
       </DelayLoadDLLs>
@@ -230,6 +226,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Src\Globals.h" />
+    <ClInclude Include="Src\LoopbackCapture.h" />
     <ClInclude Include="Src\Microphone.h" />
     <ClInclude Include="Src\Movies.h" />
     <ClInclude Include="Src\TeeEeePch.h" />
@@ -237,6 +234,7 @@
     <ClInclude Include="Res\resource.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Src\LoopbackCapture.cpp" />
     <ClCompile Include="Src\Microphone.cpp" />
     <ClCompile Include="Src\Movies.cpp" />
     <ClCompile Include="Src\TeeEee.cpp" />

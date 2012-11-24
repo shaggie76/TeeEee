@@ -16,7 +16,17 @@
 /*
     TODO: should be able to fade to black now
     - disable agc for shush?
+
+    SSE microphone i16->fp
+
+    FFTW_MEASURE 
 */
+
+#pragma comment(lib, "Dinput8.lib")
+#pragma comment(lib, "dxguid.lib")
+
+#pragma comment(lib, "libvlccore.lib")
+#pragma comment(lib, "libvlc.lib")
 
 #define RECYCLE_PLAYER_INSTANCE
 
@@ -72,7 +82,7 @@ const time_t PRELOAD_DECAY = 1;
 
 const float VOLUME_QUANTUM = 1.f;
 
-const float GAIN_HEADROOM = (-3.f * VOLUME_QUANTUM) - 3.f;
+const float GAIN_HEADROOM = (-3.f * VOLUME_QUANTUM);
 
 const float MIN_VOLUME = -3.f * VOLUME_QUANTUM;
 const float MAX_VOLUME = 3.f * VOLUME_QUANTUM;
@@ -1112,7 +1122,7 @@ static void OnMovieComplete()
         if(gShushType == ST_TIMEOUT)
         {
             PlayMovieEx(gDial[sTimeoutIndex], PM_TIMEOUT);
-            Microphone::SetSensitivity(1.f);
+            TEMicrophone::SetSensitivity(1.f);
             return;
         }
     }
@@ -1125,7 +1135,7 @@ static void OnMovieComplete()
         AdvanceCurrentChannel();
     }
         
-    Microphone::SetSensitivity(sMicrophoneSensitivity);
+    TEMicrophone::SetSensitivity(sMicrophoneSensitivity);
     PlayMovie();
 }
 
@@ -1959,7 +1969,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
             {
                 UINT index = LOWORD(wParam) - COMMAND_MICROPHONE_SENSITIVITY;
                 sMicrophoneSensitivity = 1.f - (static_cast<float>(index) / static_cast<float>(SENSITIVITY_STEPS - 1));
-                Microphone::SetSensitivity(sMicrophoneSensitivity);
+                TEMicrophone::SetSensitivity(sMicrophoneSensitivity);
             }
             
             if((LOWORD(wParam) >= COMMAND_PLAY_MOVIE_INDEX) && (LOWORD(wParam) < (COMMAND_PLAY_MOVIE_INDEX + gMovies.size())))
@@ -2558,8 +2568,8 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     InitRemote();
     StartThreads();
     
-    Microphone::Initialize(sWindowHandle);
-    Microphone::SetSensitivity(sMicrophoneSensitivity);
+    TEMicrophone::Initialize(sWindowHandle);
+    TEMicrophone::SetSensitivity(sMicrophoneSensitivity);
     
     PlayMovie();
 
@@ -2589,7 +2599,7 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
        sVlcPlayer = NULL;
     }
 
-    Microphone::Shutdown();
+    TEMicrophone::Shutdown();
     
     Assert(StopThreads());
     ShutdownRemote();
