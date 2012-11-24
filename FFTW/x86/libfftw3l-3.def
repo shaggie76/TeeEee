@@ -1,6 +1,8 @@
 LIBRARY libfftw3l-3.dll
 EXPORTS
 fftwl_alignment_of
+fftwl_alloc_complex
+fftwl_alloc_real
 fftwl_assertion_failed
 fftwl_bufdist
 fftwl_choose_radix
@@ -234,6 +236,7 @@ fftwl_codelet_t2_64
 fftwl_codelet_t2_8
 fftwl_compute_tilesz
 fftwl_configure_planner
+fftwl_cost
 fftwl_cpy1d
 fftwl_cpy2d
 fftwl_cpy2d_ci
@@ -277,9 +280,11 @@ fftwl_execute_split_dft_c2r
 fftwl_execute_split_dft_r2c
 fftwl_export_wisdom
 fftwl_export_wisdom_to_file
+fftwl_export_wisdom_to_filename
 fftwl_export_wisdom_to_string
 fftwl_extract_reim
 fftwl_factors_into
+fftwl_factors_into_small_primes
 fftwl_find_generator
 fftwl_first_divisor
 fftwl_flops
@@ -302,6 +307,7 @@ fftwl_imin
 fftwl_import_system_wisdom
 fftwl_import_wisdom
 fftwl_import_wisdom_from_file
+fftwl_import_wisdom_from_filename
 fftwl_import_wisdom_from_string
 fftwl_init_threads
 fftwl_is_prime
@@ -525,8 +531,12 @@ lfftw_cleanup_
 lfftw_cleanup__
 lfftw_cleanup_threads_
 lfftw_cleanup_threads__
+lfftw_cost_
+lfftw_cost__
 lfftw_destroy_plan_
 lfftw_destroy_plan__
+lfftw_estimate_cost_
+lfftw_estimate_cost__
 lfftw_execute_
 lfftw_execute__
 lfftw_execute_dft_
@@ -613,3 +623,5 @@ lfftw_plan_with_nthreads_
 lfftw_plan_with_nthreads__
 lfftw_print_plan_
 lfftw_print_plan__
+lfftw_set_timelimit_
+lfftw_set_timelimit__

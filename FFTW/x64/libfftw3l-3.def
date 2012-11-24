@@ -284,6 +284,7 @@ fftwl_export_wisdom_to_filename
 fftwl_export_wisdom_to_string
 fftwl_extract_reim
 fftwl_factors_into
+fftwl_factors_into_small_primes
 fftwl_find_generator
 fftwl_first_divisor
 fftwl_flops
@@ -622,3 +623,5 @@ lfftw_plan_with_nthreads_
 lfftw_plan_with_nthreads__
 lfftw_print_plan_
 lfftw_print_plan__
+lfftw_set_timelimit_
+lfftw_set_timelimit__

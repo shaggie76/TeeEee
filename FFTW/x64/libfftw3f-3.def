@@ -661,6 +661,7 @@ fftwf_export_wisdom_to_filename
 fftwf_export_wisdom_to_string
 fftwf_extract_reim
 fftwf_factors_into
+fftwf_factors_into_small_primes
 fftwf_find_generator
 fftwf_first_divisor
 fftwf_flops
@@ -1005,3 +1006,5 @@ sfftw_plan_with_nthreads_
 sfftw_plan_with_nthreads__
 sfftw_print_plan_
 sfftw_print_plan__
+sfftw_set_timelimit_
+sfftw_set_timelimit__

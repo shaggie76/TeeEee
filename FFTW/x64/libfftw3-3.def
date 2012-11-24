@@ -96,6 +96,8 @@ dfftw_plan_with_nthreads_
 dfftw_plan_with_nthreads__
 dfftw_print_plan_
 dfftw_print_plan__
+dfftw_set_timelimit_
+dfftw_set_timelimit__
 fftw_alignment_of
 fftw_alloc_complex
 fftw_alloc_real
@@ -757,6 +759,7 @@ fftw_export_wisdom_to_filename
 fftw_export_wisdom_to_string
 fftw_extract_reim
 fftw_factors_into
+fftw_factors_into_small_primes
 fftw_find_generator
 fftw_first_divisor
 fftw_flops
