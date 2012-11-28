@@ -182,7 +182,7 @@ static DWORD WINAPI LoadThread(void *)
     {
         Movie* movie = sLoadWorkQueue.pop_front();
         
-        if(!movie)
+        if(!movie || !movie->coverPath[0])
         {
             break;
         }
@@ -191,15 +191,12 @@ static DWORD WINAPI LoadThread(void *)
 
         HRESULT hr;
 
-        TCHAR filePath[MAX_PATH];
-        GetMovieCoverName(filePath, *movie);
-        
         IPicture* picture = NULL;
-        hr = OleLoadPicturePath(filePath, NULL, 0, CLR_NONE, IID_IPicture, reinterpret_cast<LPVOID*>(&picture));
+        hr = OleLoadPicturePath(movie->coverPath, NULL, 0, CLR_NONE, IID_IPicture, reinterpret_cast<LPVOID*>(&picture));
         if(FAILED(hr))
         {
             TCHAR logBuffer[512];
-            _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Failed to load %s\n"), filePath);
+            _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Failed to load %s\n"), movie->coverPath);
             OutputDebugString(logBuffer);
             movie->state = Movie::MS_DORMANT;
             continue;

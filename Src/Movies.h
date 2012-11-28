@@ -8,6 +8,8 @@ struct Movie
 {
     TCHAR   name[MAX_PATH];
     TCHAR   path[MAX_PATH];
+    TCHAR   coverPath[MAX_PATH];
+
     HBITMAP cover;
     
     enum State
@@ -31,6 +33,5 @@ extern Movies gGoodnight;
 
 extern void FindMovies();
 extern void UnloadMovie(Movie& movie);
-extern void GetMovieCoverName(TCHAR* path, const Movie& movie);
 
 #endif // MOVIES_H

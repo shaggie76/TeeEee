@@ -41,7 +41,31 @@ static bool FileExists(const TCHAR* path)
     DWORD len = GetLongPathName(path, buffer, ARRAY_COUNT(buffer));
     return(len > 0);
 }
-   
+       
+static TCHAR* FindExtension(TCHAR* str)
+{
+    str = _tcschr(str, '.');
+        
+    if(!str)
+    {
+        return(NULL);
+    }
+        
+    for(;;)
+    {
+        TCHAR* q = _tcschr(str + 1, '.');
+            
+        if(q)
+        {
+            str = q;
+        }
+        else
+        {
+            return(str);
+        }
+    }
+}
+
 static void ScanDir(const TCHAR* dir)
 {
     WIN32_FIND_DATA findData = {0};
@@ -91,7 +115,7 @@ static void ScanDir(const TCHAR* dir)
         
         _tcscpy(movie.name, findData.cFileName);
         
-        TCHAR* ext = Util::FindExtension(movie.name);
+        TCHAR* ext = FindExtension(movie.name);
         
         if(!ext || (_tcscmp(ext, TEXT(".avi")) && _tcscmp(ext, TEXT(".mp4"))))
         {
@@ -133,16 +157,28 @@ static void ScanDir(const TCHAR* dir)
             continue;
         }
 
-        TCHAR coverName[MAX_PATH] = {0};
-        GetMovieCoverName(coverName, movie);
-
-        if(!FileExists(coverName))
+        _tcscpy(movie.coverPath, movie.path);
+        ext = FindExtension(movie.coverPath);
+    
+        if(ext)
         {
-            TCHAR messageBuf[1024];
-            _sntprintf(messageBuf, ARRAY_COUNT(messageBuf), TEXT("No cover found for: %s\n"), movie.name);
-            OutputDebugString(messageBuf);
+            _tcscpy(ext, TEXT(".jpg"));
+        } 
 
-            /* MessageBox(NULL, messageBuf, TEXT("TeeEee"), MB_OK | MB_ICONERROR); */
+        if(!FileExists(movie.coverPath))
+        {
+            _tcscpy(movie.coverPath, dir);
+            _tcscat(movie.coverPath, TEXT(".jpg"));
+
+            if(!FileExists(movie.coverPath))
+            {
+                TCHAR messageBuf[1024];
+                _sntprintf(messageBuf, ARRAY_COUNT(messageBuf), TEXT("No cover found for: %s\n"), movie.name);
+                OutputDebugString(messageBuf);
+                movie.coverPath[0] = '\0';
+                
+                /* MessageBox(NULL, messageBuf, TEXT("TeeEee"), MB_OK | MB_ICONERROR); */
+            }
         }
 
         gMovies.push_back(movie);
@@ -222,17 +258,4 @@ void UnloadMovie(Movie& movie)
     TCHAR logBuffer[512];
     _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Unloaded %s\n"), movie.name);
     OutputDebugString(logBuffer);
-}
-
-
-void GetMovieCoverName(TCHAR* path, const Movie& movie)
-{
-    _tcscpy(path, movie.path);
-
-    TCHAR* ext = Util::FindExtension(path);
-    
-    if(ext)
-    {
-        _tcscpy(ext, TEXT(".jpg"));
-    }        
 }

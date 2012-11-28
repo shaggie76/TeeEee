@@ -37,30 +37,6 @@ namespace Util
     {
         memset(memory, 0, size);
     }
-    
-    inline TCHAR* FindExtension(TCHAR* str)
-    {
-        str = _tcschr(str, '.');
-        
-        if(!str)
-        {
-            return(NULL);
-        }
-        
-        for(;;)
-        {
-            TCHAR* q = _tcschr(str + 1, '.');
-            
-            if(q)
-            {
-                str = q;
-            }
-            else
-            {
-                return(str);
-            }
-        }
-    }
 }
 
 #include <assert.h>
