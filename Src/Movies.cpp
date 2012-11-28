@@ -170,7 +170,37 @@ static void ScanDir(const TCHAR* dir)
             _tcscpy(movie.coverPath, dir);
             _tcscat(movie.coverPath, TEXT(".jpg"));
 
-            if(!FileExists(movie.coverPath))
+            if(FileExists(movie.coverPath))
+            {
+                TCHAR* str = _tcschr(const_cast<TCHAR*>(dir), '\\');
+                Assert(str);
+    
+                for(;;)
+                {
+                    TCHAR* q = _tcschr(str + 1, '\\');
+        
+                    if(q)
+                    {
+                        str = q;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                _tcscpy(movie.name, str + 1);
+                _tcscat(movie.name, TEXT("/"));
+                _tcscat(movie.name, findData.cFileName);
+                
+                ext = FindExtension(movie.name);
+
+                if(ext)
+                {
+                    *ext = '\0';
+                }
+            }
+            else
             {
                 TCHAR messageBuf[1024];
                 _sntprintf(messageBuf, ARRAY_COUNT(messageBuf), TEXT("No cover found for: %s\n"), movie.name);

@@ -1762,12 +1762,12 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     HMENU subMenu = CreatePopupMenu();
                     Assert(subMenu);
 
-                    TCHAR* moviePath = sChannels[i].movies.front()->path;
-                    TCHAR* baseName = FindBaseName(moviePath);
-                    size_t dirLen = static_cast<size_t>(baseName - moviePath);
+                    TCHAR* coverPath = sChannels[i].movies.front()->coverPath;
+                    TCHAR* baseName = FindBaseName(coverPath);
+                    size_t dirLen = static_cast<size_t>(baseName - coverPath);
                     
                     TCHAR dir[MAX_PATH];
-                    _tcsncpy(dir, moviePath, dirLen);
+                    _tcsncpy(dir, coverPath, dirLen);
                     dir[dirLen] = '\0';
                     
                     const TCHAR* label = FindBaseName(dir) + 1;
