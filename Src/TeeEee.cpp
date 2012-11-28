@@ -700,11 +700,11 @@ static void BuildChannels()
     {
         Movie& movie = *i;
         
-        const TCHAR* baseName = FindBaseName(movie.path);
-        size_t dirLen = static_cast<size_t>(baseName - movie.path);
+        const TCHAR* baseName = FindBaseName(movie.coverPath);
+        size_t dirLen = static_cast<size_t>(baseName - movie.coverPath);
         
         TCHAR dir[MAX_PATH];
-        _tcsncpy(dir, movie.path, dirLen);
+        _tcsncpy(dir, movie.coverPath, dirLen);
         dir[dirLen] = '\0';
 
         if(_tcscmp(prevDir, dir))
