@@ -1160,35 +1160,6 @@ static void OnLengthChanged()
     }
 }
 
-static void HandleRemoteButton(size_t buttonId)
-{
-    if(sSleepTime || (gPlayingState > PM_PLAYING))
-    {
-        return;
-    }
-
-    // Button 2 is the big red one:
-    //
-    //if(buttonId == 2)
-    //{
-    //    SendMessage(sWindowHandle, WM_KEYDOWN, VK_MEDIA_PLAY_PAUSE, 0);
-    //    return;
-    //}
-
-    Channel& channel = sChannels[buttonId % sChannels.size()];
-
-    if(&channel == sCurrentChannel)
-    {
-        // SendMessage(sWindowHandle, WM_KEYDOWN, VK_MEDIA_PLAY_PAUSE, 0);
-        return;
-    }
-
-    StopMovie();
-    sCurrentChannel = &channel;
-
-    PlayMovie();
-}
-
 static void OnShush()
 {
     OutputDebugString(TEXT("Shush!\n"));
@@ -1317,6 +1288,46 @@ static void PrevChannel()
         Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
     }
 }    
+
+static void HandleRemoteButton(size_t buttonId)
+{
+    if(sSleepTime || (gPlayingState > PM_PLAYING))
+    {
+        return;
+    }
+
+#if 1
+    if(buttonId & 1)
+    {
+        NextChannel();
+    }
+    else
+    {
+        PrevChannel();
+    }
+#else
+    // Button 2 is the big red one:
+    //
+    //if(buttonId == 2)
+    //{
+    //    SendMessage(sWindowHandle, WM_KEYDOWN, VK_MEDIA_PLAY_PAUSE, 0);
+    //    return;
+    //}
+
+    Channel& channel = sChannels[buttonId % sChannels.size()];
+
+    if(&channel == sCurrentChannel)
+    {
+        // SendMessage(sWindowHandle, WM_KEYDOWN, VK_MEDIA_PLAY_PAUSE, 0);
+        return;
+    }
+
+    StopMovie();
+    sCurrentChannel = &channel;
+
+    PlayMovie();
+#endif
+}
 
 enum PovHatState
 {
