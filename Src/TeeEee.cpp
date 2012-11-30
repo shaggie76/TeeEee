@@ -462,6 +462,8 @@ void LoadVolumeForMovie()
     bool gotValue = (RegQueryValueEx(key, movie.name, 0, &valueType, reinterpret_cast<LPBYTE>(&sVolume), &volumeSize) == ERROR_SUCCESS);
     Assert(RegCloseKey(key) == ERROR_SUCCESS);
     
+    sVolume /= 4.0; // Marshall from old format
+
     if(!gotValue || (sVolume < MIN_VOLUME) || (sVolume > MAX_VOLUME))
     {
         sVolume = 0.f;
@@ -491,13 +493,15 @@ void SaveVolumeForMovie()
         return;
     }
 
+    double volume = sVolume * 4.0; // Marshall to old format
+
     if(RegSetValueEx
     (
         key,
         movie.name,
         NULL,
         REG_DWORD,
-        reinterpret_cast<const BYTE*>(&sVolume),
+        reinterpret_cast<const BYTE*>(&volume),
         static_cast<DWORD>(sizeof(sVolume))
     ) != ERROR_SUCCESS)
     {
@@ -2554,9 +2558,7 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
     const char* args[] =
     {
-        "--no-osd",
-        "--audio-filter=compressor",
-        "--no-ignore-config"
+        "--no-osd"
     };
 
     sVlc = libvlc_new(ARRAY_COUNT(args), args);
