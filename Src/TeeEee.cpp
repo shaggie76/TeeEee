@@ -461,6 +461,20 @@ static void GetVolumeKeyName(TCHAR* keyName, const Movie& movie)
     {
         *ext = '\0';
     }
+
+    TCHAR* disc = _tcsstr(keyName, TEXT("Disc "));
+
+    if(disc)
+    {
+        disc[5] = '*';
+    }
+    
+    TCHAR* part = _tcsstr(keyName, TEXT("Part "));
+
+    if(part)
+    {
+        part[5] = '*';
+    }
 }
 
 void LoadVolumeForMovie()
