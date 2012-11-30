@@ -34,4 +34,7 @@ extern Movies gGoodnight;
 extern void FindMovies();
 extern void UnloadMovie(Movie& movie);
 
+extern TCHAR* FindExtension(TCHAR* str);
+extern TCHAR* FindBaseName(TCHAR* str);
+
 #endif // MOVIES_H

@@ -444,6 +444,25 @@ static void CalcFullscreenLayout(int& x, int& y, int& dx, int& dy)
 
 const TCHAR* VOLUME_REG_KEY = TEXT("SOFTWARE\\TeeEee\\Volume");
 
+static void GetVolumeKeyName(TCHAR* keyName, const Movie& movie)
+{
+    const TCHAR* baseName = FindBaseName(const_cast<TCHAR*>(movie.coverPath));
+    
+    if(!baseName || !baseName[0])
+    {
+        _tcscpy(keyName, movie.name);
+        return;
+    }
+
+    _tcscpy(keyName, baseName + 1);
+    TCHAR* ext = FindExtension(keyName);
+
+    if(ext)
+    {
+        *ext = '\0';
+    }
+}
+
 void LoadVolumeForMovie()
 {
     const Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->movies.front();
@@ -459,7 +478,10 @@ void LoadVolumeForMovie()
     DWORD volumeSize = sizeof(sVolume);
     DWORD valueType = REG_DWORD;
 
-    bool gotValue = (RegQueryValueEx(key, movie.name, 0, &valueType, reinterpret_cast<LPBYTE>(&sVolume), &volumeSize) == ERROR_SUCCESS);
+    TCHAR keyName[MAX_PATH];
+    GetVolumeKeyName(keyName, movie);
+
+    bool gotValue = (RegQueryValueEx(key, keyName, 0, &valueType, reinterpret_cast<LPBYTE>(&sVolume), &volumeSize) == ERROR_SUCCESS);
     Assert(RegCloseKey(key) == ERROR_SUCCESS);
     
     sVolume /= 4.0; // Marshall from old format
@@ -495,10 +517,13 @@ void SaveVolumeForMovie()
 
     double volume = sVolume * 4.0; // Marshall to old format
 
+    TCHAR keyName[MAX_PATH];
+    GetVolumeKeyName(keyName, movie);
+
     if(RegSetValueEx
     (
         key,
-        movie.name,
+        keyName,
         NULL,
         REG_DWORD,
         reinterpret_cast<const BYTE*>(&volume),
@@ -655,30 +680,6 @@ static void SaveSensitivity()
 }
 
 const TCHAR* CHANNEL_POSITION_REG_KEY = TEXT("SOFTWARE\\TeeEee\\Channels");
-
-static TCHAR* FindBaseName(TCHAR* str)
-{
-    str = _tcschr(str, '\\');
-    
-    if(!str)
-    {
-        return(NULL);
-    }
-    
-    for(;;)
-    {
-        TCHAR* q = _tcschr(str + 1, '\\');
-        
-        if(q)
-        {
-            str = q;
-        }
-        else
-        {
-            return(str);
-        }
-    }
-}
 
 struct NameSort
 {

@@ -42,7 +42,7 @@ static bool FileExists(const TCHAR* path)
     return(len > 0);
 }
        
-static TCHAR* FindExtension(TCHAR* str)
+TCHAR* FindExtension(TCHAR* str)
 {
     str = _tcschr(str, '.');
         
@@ -55,6 +55,30 @@ static TCHAR* FindExtension(TCHAR* str)
     {
         TCHAR* q = _tcschr(str + 1, '.');
             
+        if(q)
+        {
+            str = q;
+        }
+        else
+        {
+            return(str);
+        }
+    }
+}
+
+TCHAR* FindBaseName(TCHAR* str)
+{
+    str = _tcschr(str, '\\');
+    
+    if(!str)
+    {
+        return(NULL);
+    }
+    
+    for(;;)
+    {
+        TCHAR* q = _tcschr(str + 1, '\\');
+        
         if(q)
         {
             str = q;
