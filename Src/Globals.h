@@ -77,4 +77,65 @@ inline float Sqr(float x)
 
 #define StaticAssert(pred) switch(0){case 0:case pred:;}
 
+#pragma warning(push)
+#pragma warning(disable : 4100) // unreferenced formal parameter
+
+template<typename T>
+class SIMDAllocator
+{
+public:
+    SIMDAllocator()
+    {
+    }
+
+    template <class Other>
+    SIMDAllocator(const SIMDAllocator<Other>&)
+    {
+    }
+
+    typedef T          value_type;
+    typedef size_t     size_type;
+    typedef ptrdiff_t  difference_type;
+
+    typedef T*         pointer;
+    typedef const T*   const_pointer;
+
+    typedef T&         reference;
+    typedef const T&   const_reference;
+
+    pointer allocate(size_type actualCount, const void* = 0)
+    {
+        void* m = _aligned_malloc(actualCount * sizeof(T), 16);
+        return(reinterpret_cast<T*>(m));
+    }
+
+    void deallocate(pointer pMemory, size_type)
+    {
+        _aligned_free(pMemory);
+    }
+
+    void construct(pointer p, const T& val)
+    {
+        new (p) T(val);
+    }
+
+    void destroy(pointer p)
+    {
+        p->~T();
+    }
+    
+    size_type max_size() const
+    {
+        return(ULONG_MAX / sizeof(T));
+    }
+
+    template <class O>
+    struct rebind
+    {
+        typedef SIMDAllocator<O> other ;
+    };
+};
+
+#pragma warning(pop)
+
 #endif // GLOBALS_H

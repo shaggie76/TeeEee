@@ -45,13 +45,19 @@ const float MODERATE_BIAS = -11.f;
 
 static HWND sWindowHandle = NULL;
 
+typedef SIMDAllocator<float> SIMDAllocatorFloat;
+typedef std::vector<float, SIMDAllocatorFloat> FloatArray;
+
 struct FFTComplex
 {
     float r, i;
 };
 
+typedef SIMDAllocator<FFTComplex> SIMDAllocatorFFTComplex;
+typedef std::vector<FFTComplex, SIMDAllocatorFFTComplex> FFTComplexArray;
+
 static bool sHaveLoopback = false;
-static std::vector<float> sLoopbackFreqMag;
+static FloatArray sLoopbackFreqMag;
 
 static inline float VolumeToDecibels(float volume)
 {
@@ -67,7 +73,7 @@ static void ClearHistory()
 }
 
 // TODO: weighting function instead?
-static void BandPassFilter(std::vector<FFTComplex>& frequencyDomain)
+static void BandPassFilter(FFTComplexArray& frequencyDomain)
 {
     for(size_t freq = 0; freq < MIN_FREQUENCY; ++freq)
     {
@@ -84,7 +90,7 @@ static void BandPassFilter(std::vector<FFTComplex>& frequencyDomain)
     }
 }
 
-static void ToFrequencyDomain(std::vector<FFTComplex>& frequencyDomain, std::vector<float>& timeDomain)
+static void ToFrequencyDomain(FFTComplexArray& frequencyDomain, FloatArray& timeDomain)
 {
     StaticAssert(sizeof(FFTComplex) == sizeof(fftwf_complex));
 
@@ -107,7 +113,7 @@ static void ToFrequencyDomain(std::vector<FFTComplex>& frequencyDomain, std::vec
     fftwf_destroy_plan(plan);
 }
 
-static void ToTimeDomain(std::vector<float>& timeDomain, const std::vector<FFTComplex>& frequencyDomain)
+static void ToTimeDomain(FloatArray& timeDomain, const FFTComplexArray& frequencyDomain)
 {
     fftwf_plan plan = fftwf_plan_dft_c2r_1d
     (
@@ -130,10 +136,10 @@ static void ToTimeDomain(std::vector<float>& timeDomain, const std::vector<FFTCo
 }
 
 /* TODO: SSE */
-static float SumOfSquares(const std::vector<float>& timeDomain)
+static float SumOfSquares(const FloatArray& timeDomain)
 {
     float sumOfSquares = 0.0;
-    for(std::vector<float>::const_iterator i = timeDomain.begin(), end = timeDomain.end(); i != end; ++i)
+    for(FloatArray::const_iterator i = timeDomain.begin(), end = timeDomain.end(); i != end; ++i)
     {
         float s = *i;
         sumOfSquares += s * s;
@@ -148,7 +154,7 @@ static void ProcessMicPacket(size_t packetIndex)
 
     size_t samples = waveHeader.dwBytesRecorded / 2;
     
-    std::vector<float> timeDomain(PACKET_SIZE);
+    FloatArray timeDomain(PACKET_SIZE);
     static const float scale = 1.f / 32768.f;
         
     for(size_t i = 0; i < samples; ++i)
@@ -163,7 +169,7 @@ static void ProcessMicPacket(size_t packetIndex)
         timeDomain[i] = 0.f;
     }
     
-    std::vector<FFTComplex> frequencyDomain;
+    FFTComplexArray frequencyDomain;
     ToFrequencyDomain(frequencyDomain, timeDomain);
 
     BandPassFilter(frequencyDomain);

@@ -17,6 +17,7 @@
 
 #include <vector>
 #include <deque>
+#include <malloc.h>
 
 #include "Globals.h"
 
