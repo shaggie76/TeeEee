@@ -693,8 +693,8 @@ struct NameSort
 {
     bool operator()(const Movie& am, const Movie& bm) const
     {
-        const TCHAR* a = am.name;
-        const TCHAR* b = bm.name;
+        const TCHAR* a = am.path;
+        const TCHAR* b = bm.path;
 
         while(*a && *b)
         {
