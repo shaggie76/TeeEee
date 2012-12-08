@@ -14,12 +14,7 @@
 #include <vlc/vlc.h>
 
 /*
-    TODO: should be able to fade to black now
-    - disable agc for shush?
-
     SSE microphone i16->fp
-
-    FFTW_MEASURE 
 */
 
 #pragma comment(lib, "Dinput8.lib")
@@ -704,9 +699,58 @@ const TCHAR* CHANNEL_POSITION_REG_KEY = TEXT("SOFTWARE\\TeeEee\\Channels");
 
 struct NameSort
 {
-    bool operator()(const Movie& a, const Movie& b) const
+    bool operator()(const Movie& am, const Movie& bm) const
     {
-        return(_tcscmp(a.path, b.path) <= 0);
+        const TCHAR* a = am.name;
+        const TCHAR* b = bm.name;
+
+        while(*a && *b)
+        {
+            const int aDigit = isdigit(*a);
+            const int bDigit = isdigit(*b);
+
+            if(aDigit && bDigit)
+            {
+                TCHAR* aEnd;
+                const unsigned long aNum = _tcstoul(a, &aEnd, 0);
+                Assert(aEnd && (aEnd != a));
+                a = aEnd;
+
+                TCHAR* bEnd;
+                const unsigned long bNum = _tcstoul(b, &bEnd, 0);
+                Assert(aEnd && (bEnd != b));
+                b = bEnd;
+
+                const long d = static_cast<long>(aNum - bNum);
+
+                if(d)
+                {
+                    return(d < 0);
+                }
+            
+                continue;
+            }
+            else if(aDigit)
+            {
+                return(true);
+            }
+            else if(bDigit)
+            {
+                return(false);
+            }
+            
+            const int d = *a - *b;
+
+            if(d)
+            {
+                return(d < 0);
+            }
+
+            ++a;
+            ++b;
+        }
+
+        return(*a != 0);
     }
 };
 
