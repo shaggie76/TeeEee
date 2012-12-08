@@ -9,6 +9,8 @@
 #include <CommCtrl.h>
 #include <OleCtl.h>
 #include <MMSystem.h>
+#include <MMDeviceAPI.h>
+#include <Audiopolicy.h>
 #include <dinput.h>
 
 #include <float.h>

@@ -143,6 +143,7 @@ static DIJOYSTATE2 sPrevJoyState = {0};
 
 const size_t SLEEP_INTERVALS = 4;
 static time_t sSleepTime = 0; // If non-zero will sleep after this.
+static time_t sSleepTimeStarted = 0;
 
 static POINT sHideCursorPoint = {0};
 
@@ -898,38 +899,69 @@ static inline float VolumeToDecibels(float volume)
     return(20.f * log10f(volume));
 }
 
-// Converts float (dB) to VLC volume (0 = mute, 100 = nominal / 0dB)
-static int GetVlcVolume()
+static IMMDevice* sDevice = NULL;
+static IAudioSessionManager* sIAudioSessionManager = NULL;
+static ISimpleAudioVolume* sSimpleAudioVolume = NULL;
+
+static void InitVolume()
 {
-    if(sMute)
+    IMMDeviceEnumerator* deviceEnumerator = NULL;
+    Assert(!FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), (void**)&deviceEnumerator)));
+    Assert(!FAILED(deviceEnumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &sDevice)));
+    SafeRelease(deviceEnumerator);
+
+    Assert(!FAILED(sDevice->Activate(__uuidof(IAudioSessionManager), CLSCTX_ALL, NULL, (void**)&sIAudioSessionManager)));
+    
+    Assert(!FAILED(sIAudioSessionManager->GetSimpleAudioVolume(NULL, FALSE, &sSimpleAudioVolume)));
+}
+
+static void ShutdownVolume()
+{
+    SafeRelease(sSimpleAudioVolume);
+    SafeRelease(sIAudioSessionManager);
+    SafeRelease(sDevice);
+}
+
+static void SetVolume()
+{
+    if(!sVlcPlayer)
     {
-        return(0);
+        return;
     }
 
-    float volume = sVolume + GAIN_HEADROOM;
+    if(sMute)
+    {
+        libvlc_audio_set_volume(sVlcPlayer, 0);
+        return;
+    }
     
+    // has 0-100 linear range
+    int vlcVolume = Round(100.f * DecibelsToVolume(sVolume + GAIN_HEADROOM));
+    vlcVolume = Clamp(vlcVolume, 0, 100);
+    libvlc_audio_set_volume(sVlcPlayer, vlcVolume);
+
+    float masterVolume = 1.f;
+
     if(sSleepTime)
     {
         time_t now;
         time(&now);
 
         double secondsUntilSleep = std::max(difftime(sSleepTime, now), 0.0);
-        double maxTimeUntilSleep = 90.0 * 60.0; // 1.5 hours
+        double maxTimeUntilSleep = difftime(sSleepTime, sSleepTimeStarted);
         
         // As we approach the cut-off, turn the volume down.
-        if(secondsUntilSleep < maxTimeUntilSleep)
+        if((maxTimeUntilSleep > 1.f) && (secondsUntilSleep < maxTimeUntilSleep))
         {
-            volume -= 30.f * (1.f - static_cast<float>(secondsUntilSleep / maxTimeUntilSleep));
+            masterVolume = static_cast<float>(secondsUntilSleep / maxTimeUntilSleep);
         }
         else if(sSleepTime < now)
         {
-            return(0);
+            masterVolume = 0;
         }
     }
 
-    //  has 0-100 linear range
-    int vlcVolume = Round(100.f * DecibelsToVolume(volume));
-    return(Clamp(vlcVolume, 0, 100));
+    Assert(!FAILED(sSimpleAudioVolume->SetMasterVolume(masterVolume, NULL)));
 }
 
 static void AdvanceCurrentChannel()
@@ -1058,7 +1090,8 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
 
     gPlayingState = newState;
 
-    libvlc_audio_set_volume(sVlcPlayer, GetVlcVolume());
+    SetVolume();
+
     libvlc_media_player_play(sVlcPlayer);
 
     Assert(SetTimer(sWindowHandle, SET_VOLUME_TIMER, SET_VOLUME_DELAY, NULL));
@@ -1664,10 +1697,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
             }
             else if(wParam == SET_VOLUME_TIMER)
             {
-                if(sVlcPlayer)
-                {
-                    libvlc_audio_set_volume(sVlcPlayer, GetVlcVolume());
-                }
+                SetVolume();
 
                 if(sSleepTime)
                 {
@@ -1991,12 +2021,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
             if((LOWORD(wParam) >= COMMAND_VOLUME_UP_3) && (LOWORD(wParam) <= COMMAND_VOLUME_DOWN_3))
             {
                 sVolume = VOLUME_QUANTUM * static_cast<float>(COMMAND_VOLUME_NONE - LOWORD(wParam));
-                
-                if(sVlcPlayer)
-                {
-                    libvlc_audio_set_volume(sVlcPlayer, GetVlcVolume());
-                }
-
+                SetVolume();
                 SaveVolumeForMovie();
                 return(0);
             }
@@ -2087,6 +2112,11 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     StopMovie();    
                 }
             
+                if(!sSleepTime)
+                {
+                    time(&sSleepTimeStarted);
+                }
+
                 time(&sSleepTime);
                 UINT hours = (LOWORD(wParam) - COMMAND_SLEEP_MODE) + 1;
                 sSleepTime += hours * 60 * 60;
@@ -2585,6 +2615,8 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     srand(static_cast<unsigned>(time(NULL)));
     Assert(!FAILED(CoInitialize(NULL)));
 
+    InitVolume();
+
     const char* args[] =
     {
         "--no-osd"
@@ -2654,6 +2686,8 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
         libvlc_release(sVlc);
         sVlc = NULL;
     }
+    
+    ShutdownVolume();
 
     CoUninitialize();
     
