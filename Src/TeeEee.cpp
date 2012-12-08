@@ -1360,14 +1360,7 @@ static void HandleRemoteButton(size_t buttonId)
     }
 
 #if 1
-    if(buttonId & 1)
-    {
-        NextChannel();
-    }
-    else
-    {
-        PrevChannel();
-    }
+    NextChannel();
 #else
     // Button 2 is the big red one:
     //
