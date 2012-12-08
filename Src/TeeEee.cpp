@@ -87,7 +87,6 @@ const float GAIN_HEADROOM = (-3.f * VOLUME_QUANTUM);
 const float MIN_VOLUME = -3.f * VOLUME_QUANTUM;
 const float MAX_VOLUME = 3.f * VOLUME_QUANTUM;
 
-static bool sMute = false;
 static float sVolume = 0.f; 
 static float sMicrophoneSensitivity = 0.f;
 
@@ -929,12 +928,6 @@ static void SetVolume()
         return;
     }
 
-    if(sMute)
-    {
-        libvlc_audio_set_volume(sVlcPlayer, 0);
-        return;
-    }
-    
     // has 0-100 linear range
     int vlcVolume = Round(100.f * DecibelsToVolume(sVolume + GAIN_HEADROOM));
     vlcVolume = Clamp(vlcVolume, 0, 100);
@@ -959,6 +952,15 @@ static void SetVolume()
         {
             masterVolume = 0;
         }
+
+        // Auto-dim:
+        libvlc_video_set_adjust_int(sVlcPlayer, libvlc_adjust_Enable, 1);
+        libvlc_video_set_adjust_float(sVlcPlayer, libvlc_adjust_Brightness, masterVolume);
+        libvlc_video_set_adjust_float(sVlcPlayer, libvlc_adjust_Contrast, masterVolume);
+    }
+    else
+    {
+        libvlc_video_set_adjust_int(sVlcPlayer, libvlc_adjust_Enable, 0);
     }
 
     Assert(!FAILED(sSimpleAudioVolume->SetMasterVolume(masterVolume, NULL)));
@@ -1352,7 +1354,7 @@ static void PrevChannel()
     }
 }    
 
-static void HandleRemoteButton(size_t buttonId)
+static void HandleRemoteButton(size_t)
 {
     if(sSleepTime || (gPlayingState > PM_PLAYING))
     {
