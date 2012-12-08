@@ -1959,16 +1959,14 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     if(windowStyle & WS_DLGFRAME)
                     {
                         CalcWindowedLayout(x, y, dx, dy, windowStyle);
-                        Assert(SetWindowPos(windowHandle, HWND_NOTOPMOST, x, y, dx, dy, SWP_DRAWFRAME | SWP_SHOWWINDOW | SWP_NOREDRAW));
-                        Assert(InvalidateRect(NULL, NULL, TRUE));
+                        Assert(SetWindowPos(windowHandle, HWND_NOTOPMOST, x, y, dx, dy, SWP_DRAWFRAME | SWP_SHOWWINDOW));
                     }
                     else
                     {
                         CalcFullscreenLayout(x, y, dx, dy);
-                        Assert(SetWindowPos(windowHandle, HWND_TOPMOST, x, y, dx, dy, SWP_DRAWFRAME | SWP_SHOWWINDOW | SWP_NOREDRAW));
+                        Assert(SetWindowPos(windowHandle, HWND_TOPMOST, x, y, dx, dy, SWP_DRAWFRAME | SWP_SHOWWINDOW));
                     }
                     
-                    Assert(InvalidateRect(windowHandle, NULL, TRUE));
                     return(0);
                 }
                 
