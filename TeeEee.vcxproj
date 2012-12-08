@@ -226,7 +226,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Src\Globals.h" />
-    <ClInclude Include="Src\LoopbackCapture.h" />
     <ClInclude Include="Src\Microphone.h" />
     <ClInclude Include="Src\Movies.h" />
     <ClInclude Include="Src\TeeEeePch.h" />
@@ -234,7 +233,6 @@
     <ClInclude Include="Res\resource.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Src\LoopbackCapture.cpp" />
     <ClCompile Include="Src\Microphone.cpp" />
     <ClCompile Include="Src\Movies.cpp" />
     <ClCompile Include="Src\TeeEee.cpp" />

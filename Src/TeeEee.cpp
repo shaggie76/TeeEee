@@ -475,6 +475,13 @@ static void GetVolumeKeyName(TCHAR* keyName, const Movie& movie)
     {
         part[5] = '*';
     }
+
+    TCHAR* season = _tcsstr(keyName, TEXT("Season "));
+
+    if(season)
+    {
+        season[7] = '*';
+    }
 }
 
 void LoadVolumeForMovie()
@@ -529,7 +536,7 @@ void SaveVolumeForMovie()
         return;
     }
 
-    double volume = sVolume * 4.0; // Marshall to old format
+    float volume = sVolume * 4.f; // Marshall to old format
 
     TCHAR keyName[MAX_PATH];
     GetVolumeKeyName(keyName, movie);
@@ -541,7 +548,7 @@ void SaveVolumeForMovie()
         NULL,
         REG_DWORD,
         reinterpret_cast<const BYTE*>(&volume),
-        static_cast<DWORD>(sizeof(sVolume))
+        static_cast<DWORD>(sizeof(volume))
     ) != ERROR_SUCCESS)
     {
         Assert(!"Could not set value.");
@@ -802,6 +809,8 @@ static void BuildChannels()
     {    
         GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&sChannels[i].startedPlaying));
     }
+
+    LoadVolumeForMovie();
 }
 
 static void SaveChannelPositions()
@@ -1275,6 +1284,7 @@ static void NextChannel()
     }
     else
     {
+        LoadVolumeForMovie();
         Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
     }
 }
@@ -1304,6 +1314,7 @@ static void PrevChannel()
     }
     else
     {
+        LoadVolumeForMovie();
         Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
     }
 }    
@@ -2038,6 +2049,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     }
                     else
                     {
+                        LoadVolumeForMovie();
                         Assert(InvalidateRect(windowHandle, NULL, TRUE));
                     }
                     
@@ -2160,40 +2172,44 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                 OnTimeout();
                 return(0);
             }
-                    
-            if(gPlayingState == PM_PLAYING)
+
+            if(wParam == VK_MEDIA_PLAY_PAUSE)
             {
-                if(wParam == VK_MEDIA_PLAY_PAUSE)
+                if(gPlayingState == PM_PLAYING)
                 {
                     PauseMovie();
-                    return(0);
                 }
-                if(wParam == VK_END)
+                else
                 {
-                    bool wasPlaying = (gPlayingState == PM_PLAYING);
-                    StopMovie();    
-                    AdvanceCurrentChannel();
-                    
-                    if(wasPlaying)
-                    {
-                        PlayMovie();
-                    }
-                    else
-                    {
-                        Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
-                    }
-                    return(0);
+                    PlayMovie();
                 }
-            }
+                return(0);
+            }                    
             else
             {
                 if(wParam == VK_MEDIA_PLAY_PAUSE)
                 {
-                    PlayMovie();
                     return(0);
                 }
             }
-            
+
+            if(wParam == VK_END)
+            {
+                bool wasPlaying = (gPlayingState == PM_PLAYING);
+                StopMovie();    
+                AdvanceCurrentChannel();
+                    
+                if(wasPlaying)
+                {
+                    PlayMovie();
+                }
+                else
+                {
+                    Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
+                }
+                return(0);
+            }
+                            
             if(wParam == VK_MEDIA_NEXT_TRACK)
             {
                 NextChannel();
