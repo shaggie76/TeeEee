@@ -99,7 +99,7 @@ const UINT HIDE_CURSOR_DELAY = 10 * 1000; // 10 sec
 
 static time_t sPreviousShushTimes[16] = {0};
 static size_t sPreviousShushIndex = 0;
-static size_t sTimeoutIndex = 0;
+static int sTimeoutIndex = -1;
 
 static libvlc_instance_t* sVlc = NULL;
 static libvlc_media_player_t* sVlcPlayer = NULL;
@@ -122,14 +122,6 @@ enum PlayingState
 };
 
 static PlayingState gPlayingState = PM_IDLE;
-
-enum ShushType
-{
-    ST_SHUSH,
-    ST_TIMEOUT
-};
-
-static ShushType gShushType = ST_SHUSH; // Active for current shush
 
 static IDirectInput8* sDirectInput = NULL;
 static IDirectInputDevice8* sJoystick = NULL;
@@ -1188,7 +1180,7 @@ static void PlayMovie()
 
     if((gPlayingState == PM_SHUSH) || (gPlayingState == PM_TIMEOUT))
     {
-        sTimeoutIndex = gDial.size(); // INVALID
+        sTimeoutIndex = -1;
         StopMovie();
         return;
     }
@@ -1223,16 +1215,17 @@ static void OnMovieComplete()
 
     if(prevState == PM_SHUSH)
     {
-        if(gShushType == ST_TIMEOUT)
+        if(sTimeoutIndex >= 0)
         {
-            PlayMovieEx(gDial[sTimeoutIndex], PM_TIMEOUT);
+            size_t i = static_cast<size_t>(std::min<int>(sTimeoutIndex, gDial.size() - 1));
+            PlayMovieEx(gDial[i], PM_TIMEOUT);
             TEMicrophone::SetSensitivity(1.f);
             return;
         }
     }
     else if(prevState == PM_TIMEOUT)
     {
-        sTimeoutIndex = gDial.size(); // INVALID
+        sTimeoutIndex = -1;
     }
     else if(prevState != PM_TIMEOUT)
     {
@@ -1276,7 +1269,7 @@ static void OnShush()
         return;
     }
 
-    if((gPlayingState == PM_IDLE) || (gPlayingState == PM_PAUSED) || (gPlayingState == PM_SHUSH))
+    if((gPlayingState == PM_IDLE) || (gPlayingState == PM_PAUSED))
     {
         return;
     }
@@ -1286,55 +1279,26 @@ static void OnShush()
     sPreviousShushTimes[sPreviousShushIndex] = now;
     sPreviousShushIndex = (sPreviousShushIndex + 1) % ARRAY_COUNT(sPreviousShushTimes);
     
-    if((CountRecentShushes(60.0) >= 2) || (sTimeoutIndex < gDial.size()))
+    if(sTimeoutIndex >= 0)
     {
-        gShushType = ST_TIMEOUT;
-        
-        if(sTimeoutIndex >= gDial.size()) // INVALID
-        {
-            sTimeoutIndex = 0;
-        }
-        else
-        {
-            if(sTimeoutIndex + 1 < gDial.size())
-            {
-               ++sTimeoutIndex; 
-            }
-        }
+        ++sTimeoutIndex;
     }
     else
     {
-        gShushType = ST_SHUSH;
-    }
-    
-    Movies& movies = sSleepTime ? gGoodnight : (gShushType == ST_TIMEOUT) ? gTimeout : gShush;
-    PlayMovieEx(movies[rand() % movies.size()], PM_SHUSH);
-}
+        size_t shushes = CountRecentShushes(60.0);
 
-static void OnTimeout()
-{
-    OutputDebugString(TEXT("Timeout!\n"));
-    
-    if(gShush.empty())
+        if(shushes > 1)
+        {
+            sTimeoutIndex = shushes - 1;
+        }
+    }
+
+    if(gPlayingState == PM_SHUSH)
     {
         return;
     }
-
-    if((gPlayingState == PM_IDLE) || (gPlayingState == PM_PAUSED) || (gPlayingState == PM_SHUSH))
-    {
-        return;
-    }
-
-    time_t now;
-    time(&now);
     
-    for(size_t i = 0; i < ARRAY_COUNT(sPreviousShushTimes); ++i)
-    {
-        sPreviousShushTimes[i] = now;
-    }
-    
-    gShushType = ST_TIMEOUT;
-    Movies& movies = sSleepTime ? gGoodnight : (gShushType == ST_TIMEOUT) ? gTimeout : gShush;
+    Movies& movies = sSleepTime ? gGoodnight : (sTimeoutIndex >= 0) ? gTimeout : gShush;
     PlayMovieEx(movies[rand() % movies.size()], PM_SHUSH);
 }
 
@@ -2231,12 +2195,6 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
             if(wParam == 'S')
             {
                 OnShush();
-                return(0);
-            }
-            
-            if(wParam == 'T')
-            {
-                OnTimeout();
                 return(0);
             }
 
