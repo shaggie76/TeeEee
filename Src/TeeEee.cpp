@@ -1134,8 +1134,6 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
 
     Assert(SetTimer(sWindowHandle, SET_VOLUME_TIMER, SET_VOLUME_DELAY, NULL));
 
-    /* Assert(InvalidateRect(sWindowHandle, NULL, TRUE));*/
-    
     OutputDebugString(TEXT("Started "));
     OutputDebugString(movie.name);
     OutputDebugString(TEXT("\n"));
@@ -1674,7 +1672,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     
                     if(now > sSleepTime)
                     {
-                        OutputDebugString(TEXT("Sleep timer done"));
+                        OutputDebugString(TEXT("Sleep timer done\n"));
                         sSleepTime = 0;
 
                         StopMovie();
