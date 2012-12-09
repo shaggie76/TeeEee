@@ -92,7 +92,12 @@ const UINT_PTR JOYSTICK_INPUT_TIMER = 2;
 const UINT JOYSTICK_INPUT_DELAY = 1000 / 60; // 60Hz
 
 const UINT_PTR SET_VOLUME_TIMER = 3;
-const UINT SET_VOLUME_DELAY = 10 * 1000; // 10-seconds
+
+#ifdef _DEBUG
+const UINT SET_VOLUME_DELAY = 1000; // 1-second
+#else
+const UINT SET_VOLUME_DELAY = 60 * 1000; // 1-minute
+#endif
 
 const UINT_PTR HIDE_CURSOR_TIMER = 4;
 const UINT HIDE_CURSOR_DELAY = 10 * 1000; // 10 sec
@@ -904,14 +909,14 @@ static void StopMovie()
 
     bool stopped = false;
 
-    if(sVlcPlayer && libvlc_media_player_is_playing(sVlcPlayer))
+    if(sVlcPlayer)
     {
-       libvlc_media_player_stop(sVlcPlayer);
+        libvlc_media_player_stop(sVlcPlayer);
 #ifndef RECYCLE_PLAYER_INSTANCE
-       libvlc_media_player_release(sVlcPlayer);
-       sVlcPlayer = NULL;
+        libvlc_media_player_release(sVlcPlayer);
+        sVlcPlayer = NULL;
 #endif
-       stopped = true;
+        stopped = true;
     }
 
     if(stopped)
@@ -988,16 +993,11 @@ static void SetVolume()
         {
             masterVolume = 0;
         }
-
-        // Auto-dim:
-        libvlc_video_set_adjust_int(sVlcPlayer, libvlc_adjust_Enable, 1);
-        libvlc_video_set_adjust_float(sVlcPlayer, libvlc_adjust_Brightness, masterVolume);
-        libvlc_video_set_adjust_float(sVlcPlayer, libvlc_adjust_Contrast, masterVolume);
     }
-    else
-    {
-        libvlc_video_set_adjust_int(sVlcPlayer, libvlc_adjust_Enable, 0);
-    }
+    
+    libvlc_video_set_adjust_int(sVlcPlayer, libvlc_adjust_Enable, 1);
+    libvlc_video_set_adjust_float(sVlcPlayer, libvlc_adjust_Brightness, masterVolume);
+    libvlc_video_set_adjust_float(sVlcPlayer, libvlc_adjust_Contrast, masterVolume);
 
     Assert(!FAILED(sSimpleAudioVolume->SetMasterVolume(masterVolume, NULL)));
 }
@@ -1127,7 +1127,7 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
     media = NULL;
 
     gPlayingState = newState;
-
+    
     SetVolume();
 
     libvlc_media_player_play(sVlcPlayer);
@@ -1663,10 +1663,10 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
             }
             else if(wParam == SET_VOLUME_TIMER)
             {
-                SetVolume();
-
                 if(sSleepTime)
                 {
+                    SetVolume();
+
                     time_t now;
                     time(&now);
                     
@@ -2112,7 +2112,12 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
 
                 time(&sSleepTime);
                 UINT hours = (LOWORD(wParam) - COMMAND_SLEEP_MODE) + 1;
+
+#ifdef _DEBUG
+                sSleepTime += hours * 60;
+#else
                 sSleepTime += hours * 60 * 60;
+#endif
 
                 Assert(InvalidateRect(windowHandle, NULL, TRUE));
                 
