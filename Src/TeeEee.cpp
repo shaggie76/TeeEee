@@ -1515,41 +1515,6 @@ static void UpdateJoystick()
     Assert(SetTimer(sWindowHandle, JOYSTICK_INPUT_TIMER, JOYSTICK_INPUT_DELAY, NULL));
 }
 
-struct MatchNonCharacters
-{
-    const bool operator()(const Movie& m)
-    {
-        return(_istalpha(m.name[0]) == 0);
-    }
-    
-    void CalcMenuName(TCHAR* buffer, size_t bufferSize) const
-    {
-        _sntprintf(buffer, bufferSize, TEXT("Movies 0-9"));
-    }
-};
-
-struct MatchCharacter
-{
-    explicit MatchCharacter(TCHAR c) :
-        mMatchChar(_totupper(c))
-    {
-    }
-    
-    const bool operator()(const Movie& m)
-    {
-        return(_totupper(m.name[0]) == mMatchChar);
-    }
-        
-    void CalcMenuName(TCHAR* buffer, size_t bufferSize) const
-    {
-        _sntprintf(buffer, bufferSize, TEXT("Movies %c"), mMatchChar);
-    }
-    
-private:
-    MatchCharacter();
-    TCHAR mMatchChar;
-};
-
 static void CleanMenuName(TCHAR* out, const TCHAR* in)
 {
     while(*in)
@@ -1854,16 +1819,32 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
             }
             
             {
-                HMENU subMenu = CreatePopupMenu();
-                Assert(subMenu);
+                HMENU channelMenu = CreatePopupMenu();
+                Assert(channelMenu);
 
-                Assert(AppendMenu(menuHandle, MF_POPUP | MF_STRING, reinterpret_cast<UINT_PTR>(subMenu), TEXT("Bed-Time Movie")));
+                Assert(AppendMenu(menuHandle, MF_POPUP | MF_STRING, reinterpret_cast<UINT_PTR>(channelMenu), TEXT("Bed-Time Movie")));
 
-                MakeIndexSubMenu(subMenu, COMMAND_BED_TIME_MOVIE_INDEX, MatchNonCharacters(), gMovies, sBedTimeMovie);
-                
-                for(size_t i = 'A'; i <= 'Z'; ++i)
+                UINT_PTR playMovieId = COMMAND_BED_TIME_MOVIE_INDEX;
+
+                for(size_t i = 0; i < sChannels.size(); ++i)
                 {
-                    MakeIndexSubMenu(subMenu, COMMAND_BED_TIME_MOVIE_INDEX, MatchCharacter(static_cast<TCHAR>(i)), gMovies, sBedTimeMovie);
+                    HMENU subMenu = CreatePopupMenu();
+                    Assert(subMenu);
+
+                    TCHAR* coverPath = sChannels[i].movies.front()->coverPath;
+                    TCHAR* baseName = FindBaseName(coverPath);
+                    size_t dirLen = static_cast<size_t>(baseName - coverPath);
+                    
+                    TCHAR dir[MAX_PATH];
+                    _tcsncpy(dir, coverPath, dirLen);
+                    dir[dirLen] = '\0';
+                    
+                    const TCHAR* label = FindBaseName(dir) + 1;
+                    
+                    Assert(AppendMenu(channelMenu, MF_POPUP | MF_STRING, reinterpret_cast<UINT_PTR>(subMenu), label));
+
+                    MakeChannelSubMenu(subMenu, playMovieId, sChannels[i].movies);
+                    playMovieId += sChannels[i].movies.size();
                 }
             }
 
@@ -2095,10 +2076,21 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                 {
                     StopMovie();    
                 }
-            
-                sBedTimeMovie = &gMovies[static_cast<size_t>(LOWORD(wParam) - COMMAND_BED_TIME_MOVIE_INDEX)];
-                Assert(InvalidateRect(windowHandle, NULL, TRUE));
-                SaveBedTimeMovie();
+
+                size_t index = static_cast<size_t>(LOWORD(wParam) - COMMAND_BED_TIME_MOVIE_INDEX);
+                
+                for(size_t c = 0; c < sChannels.size(); ++c)
+                {
+                    if(index >= sChannels[c].movies.size())
+                    {
+                        index -= sChannels[c].movies.size();
+                        continue;
+                    }
+
+                    sBedTimeMovie = sChannels[c].movies[index];
+                    SaveBedTimeMovie();
+                    break;
+                }
 
                 if(wasPlaying)
                 {
