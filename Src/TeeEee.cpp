@@ -997,7 +997,6 @@ static void SetVolume()
     
     libvlc_video_set_adjust_int(sVlcPlayer, libvlc_adjust_Enable, 1);
     libvlc_video_set_adjust_float(sVlcPlayer, libvlc_adjust_Brightness, masterVolume);
-    libvlc_video_set_adjust_float(sVlcPlayer, libvlc_adjust_Contrast, masterVolume);
 
     Assert(!FAILED(sSimpleAudioVolume->SetMasterVolume(masterVolume, NULL)));
 }
