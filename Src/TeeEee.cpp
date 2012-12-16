@@ -96,7 +96,7 @@ const UINT_PTR SET_VOLUME_TIMER = 3;
 #ifdef _DEBUG
 const UINT SET_VOLUME_DELAY = 1000; // 1-second
 #else
-const UINT SET_VOLUME_DELAY = 60 * 1000; // 1-minute
+const UINT SET_VOLUME_DELAY = 16 * 1000; // 15-seconds
 #endif
 
 const UINT_PTR HIDE_CURSOR_TIMER = 4;
@@ -995,8 +995,10 @@ static void SetVolume()
         }
     }
     
+    masterVolume = std::max(masterVolume, 0.2f); // Min 20%
+
     libvlc_video_set_adjust_int(sVlcPlayer, libvlc_adjust_Enable, 1);
-    libvlc_video_set_adjust_float(sVlcPlayer, libvlc_adjust_Brightness, masterVolume);
+    libvlc_video_set_adjust_float(sVlcPlayer, libvlc_adjust_Brightness, sqrt(masterVolume + FLT_EPSILON));
 
     Assert(!FAILED(sSimpleAudioVolume->SetMasterVolume(masterVolume, NULL)));
 }
