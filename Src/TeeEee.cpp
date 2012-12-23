@@ -1668,6 +1668,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                 {
                     SetVolume();
 
+#if 0
                     time_t now;
                     time(&now);
                     
@@ -1678,6 +1679,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
 
                         StopMovie();
                     }
+#endif
                 }
                 else
                 {
