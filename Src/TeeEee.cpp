@@ -10,6 +10,7 @@
 #include <list>
 #include <process.h>
 #include <shellapi.h>
+#include <Uxtheme.h>
 
 #include <vlc/vlc.h>
 
@@ -22,6 +23,11 @@
 
 #pragma comment(lib, "libvlccore.lib")
 #pragma comment(lib, "libvlc.lib")
+
+#pragma comment(lib, "Comctl32.lib")
+#pragma comment(lib, "Uxtheme.lib")
+
+#pragma comment(linker, "/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 #define RECYCLE_PLAYER_INSTANCE
 
@@ -102,6 +108,11 @@ const UINT SET_VOLUME_DELAY = 16 * 1000; // 15-seconds
 const UINT_PTR HIDE_CURSOR_TIMER = 4;
 const UINT HIDE_CURSOR_DELAY = 10 * 1000; // 10 sec
 
+const UINT_PTR TIMEOUT_TICK = 5;
+const UINT TIMEOUT_TICK_MS = 16;
+const UINT MIN_TIMEOUT_SECONDS = 5;
+const UINT MAX_TIMEOUT_SECONDS = 30;
+
 static time_t sPreviousShushTimes[16] = {0};
 static size_t sPreviousShushIndex = 0;
 static int sTimeoutIndex = -1;
@@ -109,6 +120,8 @@ static int sTimeoutIndex = -1;
 static libvlc_instance_t* sVlc = NULL;
 static libvlc_media_player_t* sVlcPlayer = NULL;
 static libvlc_time_t sPauseTime = -1;
+
+static HWND sProgressBar = NULL;
 
 // ms / 100-nanonseconds
 // 1E-3 / 100E-9
@@ -902,6 +915,8 @@ static void SaveChannelPositions()
 static void StopMovie()
 {
     KillTimer(sWindowHandle, SET_VOLUME_TIMER); // not checking return value
+    KillTimer(sWindowHandle, TIMEOUT_TICK); // not checking return value
+    SafeDestroyWindow(sProgressBar);
 
     Movie& movie = sSleepTime ? *sBedTimeMovie : *sCurrentChannel->movies.front();
         
@@ -1047,12 +1062,16 @@ static void LengthChangedCB(const libvlc_event_t*, void*)
 
 static void PlayMovieEx(Movie& movie, PlayingState newState)
 {
-#ifndef RECYCLE_PLAYER_INSTANCE
+#ifdef RECYCLE_PLAYER_INSTANCE
+    KillTimer(sWindowHandle, TIMEOUT_TICK); // not checking return value
+    SafeDestroyWindow(sProgressBar);
+#else
     if(sVlcPlayer)
     {
         StopMovie();
     }
 #endif // RECYCLE_PLAYER_INSTANCE
+
 
     if(newState == PM_PLAYING)
     {
@@ -1216,8 +1235,49 @@ static void OnMovieComplete()
     {
         if(sTimeoutIndex >= 0)
         {
+#if 0            
             size_t i = static_cast<size_t>(std::min<int>(sTimeoutIndex, gDial.size() - 1));
             PlayMovieEx(gDial[i], PM_TIMEOUT);
+#else        
+            gPlayingState = PM_TIMEOUT;
+
+            RECT clientRect = {0};
+            Assert(GetClientRect(sWindowHandle, &clientRect));
+
+            LONG height = clientRect.bottom / 8;
+            LONG top = (clientRect.bottom - height) / 2;
+
+            Assert(!sProgressBar);
+            sProgressBar = CreateWindowEx
+            (
+                0,
+                PROGRESS_CLASS,
+                NULL,
+                WS_CHILD | WS_VISIBLE | PBS_SMOOTH,
+                0,
+                top,
+                clientRect.right,
+                height,
+                sWindowHandle,
+                NULL,
+                GetModuleHandle(NULL),
+                NULL
+            );
+
+            // Cannot customize color if themes are enabled
+            if(FAILED(SetWindowTheme(sProgressBar, TEXT(" "), TEXT(" "))))
+            {
+                OutputDebugString(TEXT("Failed to disable theme on progress-bar\n"));
+            }
+
+            SendMessage(sProgressBar, PBM_SETBARCOLOR, 0, static_cast<LPARAM>(RGB(128,128,128)));
+            SendMessage(sProgressBar, PBM_SETBKCOLOR, 0, static_cast<LPARAM>(0));
+                
+            const UINT seconds = std::min(MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS << static_cast<UINT>(sTimeoutIndex));
+            SendMessage(sProgressBar, PBM_SETRANGE32, 0, static_cast<LPARAM>(seconds * TIMEOUT_TICK_MS));
+
+            Assert(SetTimer(sWindowHandle, TIMEOUT_TICK, TIMEOUT_TICK_MS, NULL));
+#endif
             TEMicrophone::SetSensitivity(1.f);
             return;
         }
@@ -1710,6 +1770,33 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
 
                 Assert(SetTimer(sWindowHandle, HIDE_CURSOR_TIMER, HIDE_CURSOR_DELAY, NULL));
             }
+            else if(wParam == TIMEOUT_TICK)
+            {
+                if(!sProgressBar)
+                {
+                    KillTimer(sWindowHandle, TIMEOUT_TICK); // not checking return value
+                }
+                else
+                {
+                    LPARAM pos = SendMessage(sProgressBar, PBM_GETPOS, 0, 0);
+                    LPARAM maxPos = SendMessage(sProgressBar, PBM_GETRANGE, 0, 0);
+
+                    if(pos < maxPos)
+                    {
+                        SendMessage(sProgressBar, PBM_SETPOS, static_cast<WPARAM>(pos + 1), 0);
+                    }
+                    else
+                    {
+                        KillTimer(sWindowHandle, TIMEOUT_TICK); // not checking return value
+                        SafeDestroyWindow(sProgressBar);
+
+                        sTimeoutIndex = -1;
+                        TEMicrophone::SetSensitivity(sMicrophoneSensitivity);
+                        StopMovie();
+                        PlayMovie();
+                    }
+                }
+            }
             else
             {
                 break;
@@ -1748,6 +1835,12 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
             {
                 OnPaintCover(windowHandle, paintStruct);
             }
+#if 1
+            else if(gPlayingState == PM_TIMEOUT)
+            {
+                Assert(FillRect(paintStruct.hdc, &paintStruct.rcPaint, reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH))));
+            }
+#endif
 
             Assert(EndPaint(windowHandle, &paintStruct));
         
@@ -2609,6 +2702,8 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
     srand(static_cast<unsigned>(time(NULL)));
     Assert(!FAILED(CoInitialize(NULL)));
+
+    InitCommonControls();
 
     InitVolume();
 

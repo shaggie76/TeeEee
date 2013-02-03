@@ -58,6 +58,15 @@ inline void SafeCloseHandle(T& p)
     }
 }
 
+inline void SafeDestroyWindow(HWND& p)
+{
+    if(p)
+    {
+        DestroyWindow(p);
+        p = 0;
+    }
+}
+
 template<typename T>
 inline void SafeRelease(T*& p)
 {
