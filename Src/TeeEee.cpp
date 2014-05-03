@@ -46,7 +46,7 @@ struct Channel
 
 static std::vector<Channel> sChannels;
     
-const UINT SENSITIVITY_STEPS = 10;
+const UINT SENSITIVITY_STEPS = 30;
 
 // These are the inter-thread communication queues:
 // A special request for NULL will cause the threads involved to shutdown.

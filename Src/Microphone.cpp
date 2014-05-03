@@ -470,8 +470,8 @@ void TEMicrophone::Shutdown()
 #endif // HEADSET_MONITOR
 }
 
-const float MIN_SENSITIVITY = -34.f;
-const float MAX_SENSITIVITY = -40.f;
+const float MIN_SENSITIVITY = -8.f;
+const float MAX_SENSITIVITY = -38.f;
 
 float TEMicrophone::GetSensitivity()
 {
