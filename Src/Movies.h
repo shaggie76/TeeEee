@@ -28,7 +28,7 @@ extern Movies gMovies;
 
 extern Movies gShush;
 extern Movies gTimeout;
-extern Movies gDial;
+extern Movies gLoading;
 extern Movies gGoodnight;
 
 extern void FindMovies();

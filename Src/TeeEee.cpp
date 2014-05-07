@@ -15,6 +15,8 @@
 #include <vlc/vlc.h>
 
 /*
+    channel change -> dial
+    bedtime shush -> black screen, no shush?
     SSE microphone i16->fp
 */
 
@@ -116,6 +118,7 @@ const UINT MAX_TIMEOUT_SECONDS = 30;
 static time_t sPreviousShushTimes[16] = {0};
 static size_t sPreviousShushIndex = 0;
 static int sTimeoutIndex = -1;
+static bool sLoading = false;
 
 static libvlc_instance_t* sVlc = NULL;
 static libvlc_media_player_t* sVlcPlayer = NULL;
@@ -135,6 +138,7 @@ enum PlayingState
     PM_IDLE,
     PM_PAUSED,
     PM_PLAYING,
+    PM_LOADING,
     PM_SHUSH,
     PM_TIMEOUT
 };
@@ -771,7 +775,7 @@ static void BuildChannels()
     // Separate movies into one channel per directory  
       
     std::sort(gMovies.begin(), gMovies.end(), NameSort());
-    std::sort(gDial.begin(), gDial.end(), NameSort()); /* TODO: fix these */
+    std::sort(gLoading.begin(), gLoading.end(), NameSort()); /* TODO: fix these */
     
     TCHAR prevDir[MAX_PATH] = {0};
     sChannels.reserve(32);
@@ -780,11 +784,13 @@ static void BuildChannels()
     {
         Movie& movie = *i;
         
-        const TCHAR* baseName = FindBaseName(movie.coverPath);
-        size_t dirLen = static_cast<size_t>(baseName - movie.coverPath);
+        TCHAR* path = movie.coverPath[0] ? movie.coverPath : movie.path;
+        const TCHAR* baseName = FindBaseName(path);
+
+        size_t dirLen = static_cast<size_t>(baseName - path);
         
         TCHAR dir[MAX_PATH];
-        _tcsncpy(dir, movie.coverPath, dirLen);
+        _tcsncpy(dir, path, dirLen);
         dir[dirLen] = '\0';
 
         if(_tcscmp(prevDir, dir))
@@ -1072,7 +1078,6 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
     }
 #endif // RECYCLE_PLAYER_INSTANCE
 
-
     if(newState == PM_PLAYING)
     {
         LoadVolumeForMovie();
@@ -1225,6 +1230,19 @@ static void PauseMovie()
     OutputDebugString(TEXT("\n"));
 }
 
+static void PlayLoading()
+{
+    if(gLoading.empty())
+    {
+        PlayMovie();
+    }
+    else
+    {
+        sLoading = true;
+        PlayMovieEx(gLoading.front(), PM_LOADING);
+    }
+}
+
 static void OnMovieComplete()
 {
     const PlayingState prevState = gPlayingState;
@@ -1233,12 +1251,8 @@ static void OnMovieComplete()
 
     if(prevState == PM_SHUSH)
     {
-        if(sTimeoutIndex >= 0)
+        if(!sLoading && (sTimeoutIndex >= 0))
         {
-#if 0            
-            size_t i = static_cast<size_t>(std::min<int>(sTimeoutIndex, gDial.size() - 1));
-            PlayMovieEx(gDial[i], PM_TIMEOUT);
-#else        
             gPlayingState = PM_TIMEOUT;
 
             RECT clientRect = {0};
@@ -1277,7 +1291,6 @@ static void OnMovieComplete()
             SendMessage(sProgressBar, PBM_SETRANGE32, 0, static_cast<LPARAM>(seconds * TIMEOUT_TICK_MS));
 
             Assert(SetTimer(sWindowHandle, TIMEOUT_TICK, TIMEOUT_TICK_MS, NULL));
-#endif
             TEMicrophone::SetSensitivity(1.f);
             return;
         }
@@ -1286,13 +1299,26 @@ static void OnMovieComplete()
     {
         sTimeoutIndex = -1;
     }
-    else if(prevState != PM_TIMEOUT)
+    else if(prevState == PM_PLAYING)
     {
         AdvanceCurrentChannel();
     }
-        
+    else if(prevState == PM_LOADING)
+    {
+        Assert(sLoading);
+        sLoading = false;
+    }
+
     TEMicrophone::SetSensitivity(sMicrophoneSensitivity);
-    PlayMovie();
+    
+    if(sLoading)
+    {
+        PlayLoading();
+    }
+    else
+    {
+        PlayMovie();
+    }
 }
 
 static void OnLengthChanged()
@@ -1363,7 +1389,7 @@ static void OnShush()
 
 static void NextChannel()
 {
-    if(gMovies.empty() || sSleepTime)
+    if(gMovies.empty() || sSleepTime || (gPlayingState > PM_PLAYING))
     {
         return;
     }
@@ -1382,7 +1408,7 @@ static void NextChannel()
     
     if(wasPlaying)
     {
-        PlayMovie();
+        PlayLoading();
     }
     else
     {
@@ -1393,7 +1419,7 @@ static void NextChannel()
 
 static void PrevChannel()
 {
-    if(gMovies.empty() || sSleepTime)
+    if(gMovies.empty() || sSleepTime || (gPlayingState == PM_LOADING))
     {
         return;
     }
@@ -1412,7 +1438,7 @@ static void PrevChannel()
     
     if(wasPlaying)
     {
-        PlayMovie();
+        PlayLoading();
     }
     else
     {
@@ -1792,8 +1818,17 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
 
                         sTimeoutIndex = -1;
                         TEMicrophone::SetSensitivity(sMicrophoneSensitivity);
-                        StopMovie();
-                        PlayMovie();
+
+                        if(sLoading)
+                        {
+                            TEMicrophone::SetSensitivity(sMicrophoneSensitivity);
+                            PlayLoading();
+                        }
+                        else
+                        {
+                            StopMovie();
+                            PlayMovie();
+                        }
                     }
                 }
             }
@@ -1895,12 +1930,13 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     HMENU subMenu = CreatePopupMenu();
                     Assert(subMenu);
 
-                    TCHAR* coverPath = sChannels[i].movies.front()->coverPath;
-                    TCHAR* baseName = FindBaseName(coverPath);
-                    size_t dirLen = static_cast<size_t>(baseName - coverPath);
+                    Movie& movie = *sChannels[i].movies.front();
+                    TCHAR* path = movie.coverPath[0] ? movie.coverPath : movie.path;
+                    TCHAR* baseName = FindBaseName(path);
+                    size_t dirLen = static_cast<size_t>(baseName - path);
                     
                     TCHAR dir[MAX_PATH];
-                    _tcsncpy(dir, coverPath, dirLen);
+                    _tcsncpy(dir, path, dirLen);
                     dir[dirLen] = '\0';
                     
                     const TCHAR* label = FindBaseName(dir) + 1;
@@ -1925,12 +1961,13 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     HMENU subMenu = CreatePopupMenu();
                     Assert(subMenu);
 
-                    TCHAR* coverPath = sChannels[i].movies.front()->coverPath;
-                    TCHAR* baseName = FindBaseName(coverPath);
-                    size_t dirLen = static_cast<size_t>(baseName - coverPath);
+                    Movie& movie = *sChannels[i].movies.front();
+                    TCHAR* path = movie.coverPath[0] ? movie.coverPath : movie.path;
+                    TCHAR* baseName = FindBaseName(path);
+                    size_t dirLen = static_cast<size_t>(baseName - path);
                     
                     TCHAR dir[MAX_PATH];
-                    _tcsncpy(dir, coverPath, dirLen);
+                    _tcsncpy(dir, path, dirLen);
                     dir[dirLen] = '\0';
                     
                     const TCHAR* label = FindBaseName(dir) + 1;
@@ -2294,6 +2331,11 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                 if(gPlayingState == PM_PLAYING)
                 {
                     PauseMovie();
+                }
+                else if(gPlayingState == PM_LOADING)
+                {
+                    StopMovie();
+                    sLoading = false;
                 }
                 else
                 {

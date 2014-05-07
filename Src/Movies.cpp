@@ -8,14 +8,14 @@ Movies gMovies;
 
 Movies gShush;
 Movies gTimeout;
-Movies gDial;
+Movies gLoading;
 Movies gGoodnight;
 
 static const TCHAR* SPECIAL_PREFIXES[] = 
 {
     TEXT("Shush"),
     TEXT("Timeout"),
-    TEXT("Dial"),
+    TEXT("Loading"),
     TEXT("Goodnight")
 };
 
@@ -23,7 +23,7 @@ static const size_t SPECIAL_PREFIX_LENS[] =
 {
     5,
     7,
-    4,
+    7,
     9
 };
 
@@ -31,7 +31,7 @@ static Movies* SPECIAL_MOVIES[] =
 {
     &gShush,
     &gTimeout,
-    &gDial,
+    &gLoading,
     &gGoodnight
 };
 
