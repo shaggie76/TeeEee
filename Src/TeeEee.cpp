@@ -108,10 +108,10 @@ const UINT JOYSTICK_INPUT_DELAY = 1000 / 60; // 60Hz
 
 const UINT_PTR SET_VOLUME_TIMER = 3;
 
-#ifdef _DEBUG
+#ifndef _DEBUG
 const UINT SET_VOLUME_DELAY = 1000; // 1-second
 #else
-const UINT SET_VOLUME_DELAY = 16 * 1000; // 15-seconds
+const UINT SET_VOLUME_DELAY = 16 * 1000; // 16-seconds
 #endif
 
 const UINT_PTR HIDE_CURSOR_TIMER = 4;
