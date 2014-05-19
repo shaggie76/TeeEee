@@ -50,6 +50,11 @@ static std::vector<Channel> sChannels;
     
 const UINT SENSITIVITY_STEPS = 30;
 
+const UINT TIMEOUT_STEPS = 6;
+const UINT TIMEOUT_STEP_SIZE = 5;
+static UINT sMinTimeout = TIMEOUT_STEP_SIZE;
+const UINT MAX_TIMEOUT_SECONDS = 30;
+
 // These are the inter-thread communication queues:
 // A special request for NULL will cause the threads involved to shutdown.
 static WorkQueue<Movie*> sLoadWorkQueue;
@@ -114,8 +119,6 @@ const UINT HIDE_CURSOR_DELAY = 10 * 1000; // 10 sec
 
 const UINT_PTR TIMEOUT_TICK = 5;
 const UINT TIMEOUT_TICK_MS = 16;
-const UINT MIN_TIMEOUT_SECONDS = 5;
-const UINT MAX_TIMEOUT_SECONDS = 30;
 
 static time_t sPreviousShushTimes[16] = {0};
 static size_t sPreviousShushIndex = 0;
@@ -1308,8 +1311,13 @@ static void OnMovieComplete()
             SendMessage(sProgressBar, PBM_SETBARCOLOR, 0, static_cast<LPARAM>(RGB(128,128,128)));
             SendMessage(sProgressBar, PBM_SETBKCOLOR, 0, static_cast<LPARAM>(0));
                 
-            const UINT seconds = std::min(MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS << static_cast<UINT>(sTimeoutIndex));
-            SendMessage(sProgressBar, PBM_SETRANGE32, 0, static_cast<LPARAM>(seconds * TIMEOUT_TICK_MS));
+            const UINT seconds = std::min(MAX_TIMEOUT_SECONDS, sMinTimeout << static_cast<UINT>(sTimeoutIndex));
+
+            TCHAR logBuffer[512];
+            _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Starting %d second timeout\n"), seconds);
+            OutputDebugString(logBuffer);
+
+            SendMessage(sProgressBar, PBM_SETRANGE32, 0, static_cast<LPARAM>((seconds * 1000) / TIMEOUT_TICK_MS));
 
             Assert(SetTimer(sWindowHandle, TIMEOUT_TICK, TIMEOUT_TICK_MS, NULL));
             TEMicrophone::SetSensitivity(1.f);
@@ -2000,7 +2008,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     playMovieId += sChannels[i].movies.size();
                 }
             }
-
+            
             {
                 HMENU subMenu = CreatePopupMenu();
                 Assert(subMenu);
@@ -2025,6 +2033,31 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
 
                 UINT command = COMMAND_MICROPHONE_SENSITIVITY + index;
                 Assert(CheckMenuRadioItem(subMenu, COMMAND_MICROPHONE_SENSITIVITY, COMMAND_MICROPHONE_SENSITIVITY + SENSITIVITY_STEPS, command, MF_BYCOMMAND));
+            }
+
+            {
+                HMENU subMenu = CreatePopupMenu();
+                Assert(subMenu);
+                
+                Assert(AppendMenu(menuHandle, MF_POPUP | MF_STRING, reinterpret_cast<UINT_PTR>(subMenu), TEXT("Timeout")));
+               
+                for(UINT i = 0; i < TIMEOUT_STEPS; ++i)
+                {
+                    TCHAR buffer[64];
+                    _sntprintf(buffer, ARRAY_COUNT(buffer), TEXT("%u"), (i + 1) * TIMEOUT_STEP_SIZE);
+                
+                    Assert(AppendMenu(subMenu, MF_POPUP | MF_STRING, COMMAND_MIN_TIMEOUT + i, buffer));
+                }
+
+                UINT index = static_cast<UINT>((sMinTimeout / TIMEOUT_STEP_SIZE) - 1);
+                
+                if(index >= TIMEOUT_STEPS)
+                {
+                    index = TIMEOUT_STEPS - 1;
+                }
+
+                UINT command = COMMAND_MIN_TIMEOUT + index;
+                Assert(CheckMenuRadioItem(subMenu, COMMAND_MIN_TIMEOUT, COMMAND_MIN_TIMEOUT + TIMEOUT_STEPS, command, MF_BYCOMMAND));
             }
 
             {
@@ -2170,6 +2203,14 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                 float& sensitivity = sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal;
                 sensitivity = 1.f - (static_cast<float>(index) / static_cast<float>(SENSITIVITY_STEPS - 1));
                 TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
+                return(0);
+            }
+
+            if((LOWORD(wParam) >= COMMAND_MIN_TIMEOUT) && (LOWORD(wParam) < COMMAND_MIN_TIMEOUT + TIMEOUT_STEPS))
+            {
+                UINT index = LOWORD(wParam) - COMMAND_MIN_TIMEOUT;
+                sMinTimeout = (index + 1) * TIMEOUT_STEP_SIZE;
+                return(0);
             }
             
             if((LOWORD(wParam) >= COMMAND_PLAY_MOVIE_INDEX) && (LOWORD(wParam) < (COMMAND_PLAY_MOVIE_INDEX + gMovies.size())))
