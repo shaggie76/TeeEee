@@ -1092,10 +1092,10 @@ static void LengthChangedCB(const libvlc_event_t*, void*)
 
 static void PlayMovieEx(Movie& movie, PlayingState newState)
 {
-#ifdef RECYCLE_PLAYER_INSTANCE
     KillTimer(sWindowHandle, TIMEOUT_TICK); // not checking return value
     SafeDestroyWindow(sProgressBar);
-#else
+
+#ifndef RECYCLE_PLAYER_INSTANCE
     if(sVlcPlayer)
     {
         StopMovie();
@@ -1267,6 +1267,57 @@ static void PlayLoading()
     }
 }
 
+static void StartTimeoutBar()
+{
+    SafeDestroyWindow(sProgressBar);
+
+    gPlayingState = PM_TIMEOUT;
+
+    RECT clientRect = {0};
+    Assert(GetClientRect(sWindowHandle, &clientRect));
+
+    LONG height = clientRect.bottom / 8;
+    LONG top = (clientRect.bottom - height) / 2;
+
+    Assert(!sProgressBar);
+    sProgressBar = CreateWindowEx
+    (
+        0,
+        PROGRESS_CLASS,
+        NULL,
+        WS_CHILD | WS_VISIBLE | PBS_SMOOTH,
+        0,
+        top,
+        clientRect.right,
+        height,
+        sWindowHandle,
+        NULL,
+        GetModuleHandle(NULL),
+        NULL
+    );
+
+    // Cannot customize color if themes are enabled
+    if(FAILED(SetWindowTheme(sProgressBar, TEXT(" "), TEXT(" "))))
+    {
+        OutputDebugString(TEXT("Failed to disable theme on progress-bar\n"));
+    }
+
+    SendMessage(sProgressBar, PBM_SETBARCOLOR, 0, static_cast<LPARAM>(RGB(128,128,128)));
+    SendMessage(sProgressBar, PBM_SETBKCOLOR, 0, static_cast<LPARAM>(0));
+                
+    const UINT timeout = (sTimeoutIndex > 0) ? sTimeoutIndex - 1 : 0;
+    const UINT seconds = std::min(MAX_TIMEOUT_SECONDS, sMinTimeout << static_cast<UINT>(timeout));
+
+    TCHAR logBuffer[512];
+    _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Starting %d second timeout\n"), seconds);
+    OutputDebugString(logBuffer);
+
+    SendMessage(sProgressBar, PBM_SETRANGE32, 0, static_cast<LPARAM>((seconds * 1000) / TIMEOUT_TICK_MS));
+
+    Assert(SetTimer(sWindowHandle, TIMEOUT_TICK, TIMEOUT_TICK_MS, NULL));
+    TEMicrophone::SetSensitivity(1.f);
+}
+
 static void OnMovieComplete()
 {
     const PlayingState prevState = gPlayingState;
@@ -1277,50 +1328,7 @@ static void OnMovieComplete()
     {
         if(!sLoading && (sTimeoutIndex >= 0))
         {
-            gPlayingState = PM_TIMEOUT;
-
-            RECT clientRect = {0};
-            Assert(GetClientRect(sWindowHandle, &clientRect));
-
-            LONG height = clientRect.bottom / 8;
-            LONG top = (clientRect.bottom - height) / 2;
-
-            Assert(!sProgressBar);
-            sProgressBar = CreateWindowEx
-            (
-                0,
-                PROGRESS_CLASS,
-                NULL,
-                WS_CHILD | WS_VISIBLE | PBS_SMOOTH,
-                0,
-                top,
-                clientRect.right,
-                height,
-                sWindowHandle,
-                NULL,
-                GetModuleHandle(NULL),
-                NULL
-            );
-
-            // Cannot customize color if themes are enabled
-            if(FAILED(SetWindowTheme(sProgressBar, TEXT(" "), TEXT(" "))))
-            {
-                OutputDebugString(TEXT("Failed to disable theme on progress-bar\n"));
-            }
-
-            SendMessage(sProgressBar, PBM_SETBARCOLOR, 0, static_cast<LPARAM>(RGB(128,128,128)));
-            SendMessage(sProgressBar, PBM_SETBKCOLOR, 0, static_cast<LPARAM>(0));
-                
-            const UINT seconds = std::min(MAX_TIMEOUT_SECONDS, sMinTimeout << static_cast<UINT>(sTimeoutIndex));
-
-            TCHAR logBuffer[512];
-            _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Starting %d second timeout\n"), seconds);
-            OutputDebugString(logBuffer);
-
-            SendMessage(sProgressBar, PBM_SETRANGE32, 0, static_cast<LPARAM>((seconds * 1000) / TIMEOUT_TICK_MS));
-
-            Assert(SetTimer(sWindowHandle, TIMEOUT_TICK, TIMEOUT_TICK_MS, NULL));
-            TEMicrophone::SetSensitivity(1.f);
+            StartTimeoutBar();
             return;
         }
     }
@@ -1337,7 +1345,6 @@ static void OnMovieComplete()
         Assert(sLoading);
         sLoading = false;
     }
-
 
     TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
     
@@ -1410,6 +1417,13 @@ static void OnShush()
 
     if(gPlayingState == PM_SHUSH)
     {
+        return;
+    }
+
+    if(sSleepTime)
+    {
+        StopMovie();
+        StartTimeoutBar();
         return;
     }
     
