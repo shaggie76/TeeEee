@@ -657,30 +657,37 @@ static void LoadSensitivity()
     
     if(RegOpenKeyEx(HKEY_CURRENT_USER, TEE_EEE_REG_KEY, 0, KEY_READ, &key) != ERROR_SUCCESS)
     {
-        sMicrophoneSensitivityNormal = 1.f;
-        sMicrophoneSensitivityBedtime = 1.f;
+        sMicrophoneSensitivityNormal = 0.5f;
+        sMicrophoneSensitivityBedtime = 0.5f;
+        sMinTimeout = TIMEOUT_STEP_SIZE;
         return;
     }
 
-    DWORD valueSizeNormal = sizeof(sMicrophoneSensitivityNormal);
-    DWORD valueSizeBedtime = sizeof(sMicrophoneSensitivityBedtime);
+    DWORD valueSize = sizeof(sMicrophoneSensitivityNormal);
+    DWORD valueType = REG_DWORD;
+    bool gotValue;
 
-    DWORD valueTypeNormal = REG_DWORD;
-    DWORD valueTypeBedtime = REG_DWORD;
+    gotValue = (RegQueryValueEx(key, TEXT("Sensitivity"), 0, &valueType, reinterpret_cast<LPBYTE>(&sMicrophoneSensitivityNormal), &valueSize) == ERROR_SUCCESS);
+    if(!gotValue || (sMicrophoneSensitivityNormal < 0.f) || (sMicrophoneSensitivityNormal > 1.f))
+    {
+        sMicrophoneSensitivityNormal = 0.5f;
+    }
 
-    bool gotValueNormal = (RegQueryValueEx(key, TEXT("Sensitivity"), 0, &valueTypeNormal, reinterpret_cast<LPBYTE>(&sMicrophoneSensitivityNormal), &valueSizeNormal) == ERROR_SUCCESS);
-    bool gotValueBedtime = (RegQueryValueEx(key, TEXT("BedtimeSensitivity"), 0, &valueTypeBedtime, reinterpret_cast<LPBYTE>(&sMicrophoneSensitivityBedtime), &valueSizeBedtime) == ERROR_SUCCESS);
+    gotValue = (RegQueryValueEx(key, TEXT("BedtimeSensitivity"), 0, &valueType, reinterpret_cast<LPBYTE>(&sMicrophoneSensitivityBedtime), &valueSize) == ERROR_SUCCESS);
+    if(!gotValue || (sMicrophoneSensitivityBedtime < 0.f) || (sMicrophoneSensitivityBedtime > 1.f))
+    {
+        sMicrophoneSensitivityBedtime = 0.5f;
+    }
+
+    StaticAssert(sizeof(sMinTimeout) == sizeof(DWORD));
+
+    gotValue = (RegQueryValueEx(key, TEXT("MinTimeout"), 0, &valueType, reinterpret_cast<LPBYTE>(&sMinTimeout), &valueSize) == ERROR_SUCCESS);
+    if(!gotValue || (sMinTimeout >= (TIMEOUT_STEP_SIZE * TIMEOUT_STEPS)))
+    {
+        sMinTimeout = TIMEOUT_STEP_SIZE;
+    }
+
     Assert(RegCloseKey(key) == ERROR_SUCCESS);
-    
-    if(!gotValueNormal || (sMicrophoneSensitivityNormal < 0.f) || (sMicrophoneSensitivityNormal > 1.f))
-    {
-        sMicrophoneSensitivityNormal = 1.f;
-    }
-
-    if(!gotValueBedtime || (sMicrophoneSensitivityBedtime < 0.f) || (sMicrophoneSensitivityBedtime > 1.f))
-    {
-        sMicrophoneSensitivityBedtime = 1.f;
-    }
 }
 
 static void SaveSensitivity()
@@ -725,6 +732,19 @@ static void SaveSensitivity()
         REG_DWORD,
         reinterpret_cast<const BYTE*>(&sMicrophoneSensitivityBedtime),
         static_cast<DWORD>(sizeof(sMicrophoneSensitivityBedtime))
+    ) != ERROR_SUCCESS)
+    {
+        Assert(!"Could not set value.");
+    }
+
+    if(RegSetValueEx
+    (
+        key,
+        TEXT("MinTimeout"),
+        NULL,
+        REG_DWORD,
+        reinterpret_cast<const BYTE*>(&sMinTimeout),
+        static_cast<DWORD>(sizeof(sMinTimeout))
     ) != ERROR_SUCCESS)
     {
         Assert(!"Could not set value.");
@@ -1315,7 +1335,7 @@ static void StartTimeoutBar()
     SendMessage(sProgressBar, PBM_SETRANGE32, 0, static_cast<LPARAM>((seconds * 1000) / TIMEOUT_TICK_MS));
 
     Assert(SetTimer(sWindowHandle, TIMEOUT_TICK, TIMEOUT_TICK_MS, NULL));
-    TEMicrophone::SetSensitivity(1.f);
+    TEMicrophone::SetSensitivity(sMicrophoneSensitivityBedtime); // assuming bedtime more sensative than normal
 }
 
 static void OnMovieComplete()
