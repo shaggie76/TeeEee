@@ -91,7 +91,9 @@ const float MIN_VOLUME = -3.f * VOLUME_QUANTUM;
 const float MAX_VOLUME = 3.f * VOLUME_QUANTUM;
 
 static float sVolume = 0.f; 
-static float sMicrophoneSensitivity = 0.f;
+
+static float sMicrophoneSensitivityNormal = 0.f;
+static float sMicrophoneSensitivityBedtime = 0.f;
 
 const UINT_PTR ON_SIZE_TIMER = 1;
 const UINT ON_SIZE_DELAY = 500; // 1/2 second
@@ -646,29 +648,35 @@ static void SaveBedTimeMovie()
     Assert(RegCloseKey(key) == ERROR_SUCCESS);
 }
 
-
-const TCHAR* SENSITIVITY_REG_KEY = TEXT("SOFTWARE\\TeeEee");
-
 static void LoadSensitivity()
 {
     HKEY key = NULL;
     
-    if(RegOpenKeyEx(HKEY_CURRENT_USER, SENSITIVITY_REG_KEY, 0, KEY_READ, &key) != ERROR_SUCCESS)
+    if(RegOpenKeyEx(HKEY_CURRENT_USER, TEE_EEE_REG_KEY, 0, KEY_READ, &key) != ERROR_SUCCESS)
     {
-        sMicrophoneSensitivity = 1.f;
+        sMicrophoneSensitivityNormal = 1.f;
+        sMicrophoneSensitivityBedtime = 1.f;
         return;
     }
 
-    DWORD valueSize = sizeof(sMicrophoneSensitivity);
-    DWORD valueType = REG_DWORD;
+    DWORD valueSizeNormal = sizeof(sMicrophoneSensitivityNormal);
+    DWORD valueSizeBedtime = sizeof(sMicrophoneSensitivityBedtime);
 
-    bool gotValue = (RegQueryValueEx(key, TEXT("Sensitivity"), 0, &valueType, reinterpret_cast<LPBYTE>(&sMicrophoneSensitivity), &valueSize) == ERROR_SUCCESS);
+    DWORD valueTypeNormal = REG_DWORD;
+    DWORD valueTypeBedtime = REG_DWORD;
+
+    bool gotValueNormal = (RegQueryValueEx(key, TEXT("Sensitivity"), 0, &valueTypeNormal, reinterpret_cast<LPBYTE>(&sMicrophoneSensitivityNormal), &valueSizeNormal) == ERROR_SUCCESS);
+    bool gotValueBedtime = (RegQueryValueEx(key, TEXT("BedtimeSensitivity"), 0, &valueTypeBedtime, reinterpret_cast<LPBYTE>(&sMicrophoneSensitivityBedtime), &valueSizeBedtime) == ERROR_SUCCESS);
     Assert(RegCloseKey(key) == ERROR_SUCCESS);
     
-    if(!gotValue || (sMicrophoneSensitivity < 0.f) || (sMicrophoneSensitivity > 1.f))
+    if(!gotValueNormal || (sMicrophoneSensitivityNormal < 0.f) || (sMicrophoneSensitivityNormal > 1.f))
     {
-        sMicrophoneSensitivity = 1.f;
-        return;
+        sMicrophoneSensitivityNormal = 1.f;
+    }
+
+    if(!gotValueBedtime || (sMicrophoneSensitivityBedtime < 0.f) || (sMicrophoneSensitivityBedtime > 1.f))
+    {
+        sMicrophoneSensitivityBedtime = 1.f;
     }
 }
 
@@ -679,7 +687,7 @@ static void SaveSensitivity()
     if(RegCreateKeyEx
     (
         HKEY_CURRENT_USER,
-        SENSITIVITY_REG_KEY, 
+        TEE_EEE_REG_KEY, 
         0,
         NULL,
         REG_OPTION_NON_VOLATILE,
@@ -699,8 +707,21 @@ static void SaveSensitivity()
         TEXT("Sensitivity"),
         NULL,
         REG_DWORD,
-        reinterpret_cast<const BYTE*>(&sMicrophoneSensitivity),
-        static_cast<DWORD>(sizeof(sMicrophoneSensitivity))
+        reinterpret_cast<const BYTE*>(&sMicrophoneSensitivityNormal),
+        static_cast<DWORD>(sizeof(sMicrophoneSensitivityNormal))
+    ) != ERROR_SUCCESS)
+    {
+        Assert(!"Could not set value.");
+    }
+
+    if(RegSetValueEx
+    (
+        key,
+        TEXT("BedtimeSensitivity"),
+        NULL,
+        REG_DWORD,
+        reinterpret_cast<const BYTE*>(&sMicrophoneSensitivityBedtime),
+        static_cast<DWORD>(sizeof(sMicrophoneSensitivityBedtime))
     ) != ERROR_SUCCESS)
     {
         Assert(!"Could not set value.");
@@ -1309,7 +1330,8 @@ static void OnMovieComplete()
         sLoading = false;
     }
 
-    TEMicrophone::SetSensitivity(sMicrophoneSensitivity);
+
+    TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
     
     if(sLoading)
     {
@@ -1817,11 +1839,11 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                         SafeDestroyWindow(sProgressBar);
 
                         sTimeoutIndex = -1;
-                        TEMicrophone::SetSensitivity(sMicrophoneSensitivity);
+                        TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
 
                         if(sLoading)
                         {
-                            TEMicrophone::SetSensitivity(sMicrophoneSensitivity);
+                            TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
                             PlayLoading();
                         }
                         else
@@ -1993,7 +2015,8 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     Assert(AppendMenu(subMenu, MF_POPUP | MF_STRING, COMMAND_MICROPHONE_SENSITIVITY + i, buffer));
                 }
 
-                UINT index = static_cast<UINT>((1.f - sMicrophoneSensitivity) * static_cast<float>(SENSITIVITY_STEPS));
+                float& sensitivity = sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal;
+                UINT index = static_cast<UINT>((1.f - sensitivity) * static_cast<float>(SENSITIVITY_STEPS));
                 
                 if(index >= SENSITIVITY_STEPS)
                 {
@@ -2144,8 +2167,9 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
             if((LOWORD(wParam) >= COMMAND_MICROPHONE_SENSITIVITY) && (LOWORD(wParam) < COMMAND_MICROPHONE_SENSITIVITY + SENSITIVITY_STEPS))
             {
                 UINT index = LOWORD(wParam) - COMMAND_MICROPHONE_SENSITIVITY;
-                sMicrophoneSensitivity = 1.f - (static_cast<float>(index) / static_cast<float>(SENSITIVITY_STEPS - 1));
-                TEMicrophone::SetSensitivity(sMicrophoneSensitivity);
+                float& sensitivity = sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal;
+                sensitivity = 1.f - (static_cast<float>(index) / static_cast<float>(SENSITIVITY_STEPS - 1));
+                TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
             }
             
             if((LOWORD(wParam) >= COMMAND_PLAY_MOVIE_INDEX) && (LOWORD(wParam) < (COMMAND_PLAY_MOVIE_INDEX + gMovies.size())))
@@ -2772,7 +2796,7 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     StartThreads();
     
     TEMicrophone::Initialize(sWindowHandle);
-    TEMicrophone::SetSensitivity(sMicrophoneSensitivity);
+    TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
     
     PlayMovie();
 
