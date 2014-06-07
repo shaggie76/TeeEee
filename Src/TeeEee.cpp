@@ -1366,14 +1366,14 @@ static void OnMovieComplete()
         sLoading = false;
     }
 
-    TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
-    
     if(sLoading)
     {
+        TEMicrophone::SetSensitivity(sMicrophoneSensitivityBedtime);
         PlayLoading();
     }
     else
     {
+        TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
         PlayMovie();
     }
 }
@@ -1440,12 +1440,14 @@ static void OnShush()
         return;
     }
 
+#if 0
     if(sSleepTime)
     {
         StopMovie();
         StartTimeoutBar();
         return;
     }
+#endif
     
     Movies& movies = sSleepTime ? gGoodnight : (sTimeoutIndex >= 0) ? gTimeout : gShush;
     PlayMovieEx(movies[rand() % movies.size()], PM_SHUSH);
@@ -1881,15 +1883,15 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                         SafeDestroyWindow(sProgressBar);
 
                         sTimeoutIndex = -1;
-                        TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
 
                         if(sLoading)
                         {
-                            TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
+                            TEMicrophone::SetSensitivity(sMicrophoneSensitivityBedtime);
                             PlayLoading();
                         }
                         else
                         {
+                            TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
                             StopMovie();
                             PlayMovie();
                         }
@@ -2236,7 +2238,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                 UINT index = LOWORD(wParam) - COMMAND_MICROPHONE_SENSITIVITY;
                 float& sensitivity = sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal;
                 sensitivity = 1.f - (static_cast<float>(index) / static_cast<float>(SENSITIVITY_STEPS - 1));
-                TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
+                TEMicrophone::SetSensitivity((sSleepTime || sLoading) ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
                 return(0);
             }
 
@@ -2871,7 +2873,7 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     StartThreads();
     
     TEMicrophone::Initialize(sWindowHandle);
-    TEMicrophone::SetSensitivity(sSleepTime ? sMicrophoneSensitivityBedtime : sMicrophoneSensitivityNormal);
+    TEMicrophone::SetSensitivity(sMicrophoneSensitivityNormal);
     
     PlayMovie();
 
