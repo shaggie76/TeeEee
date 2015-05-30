@@ -14,6 +14,12 @@
 
 #include <vlc/vlc.h>
 
+#pragma warning(push)
+#pragma warning(disable: 4324) // structure was padded due to __declspec(align())
+#include <bson.h>
+#include <mongoc.h>
+#pragma warning(pop)
+
 /*
     channel change -> dial
     bedtime shush -> black screen, no shush?
@@ -28,6 +34,9 @@
 
 #pragma comment(lib, "Comctl32.lib")
 #pragma comment(lib, "Uxtheme.lib")
+
+#pragma comment(lib, "bson-static-1.0.lib")
+#pragma comment(lib, "mongoc-static-1.0.lib")
 
 #pragma comment(linker, "/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
@@ -1402,6 +1411,11 @@ static void OnLengthChanged()
     }
 }
 
+static void RecordShushEvent()
+{
+    // TODO:
+}
+
 static void OnShush()
 {
     OutputDebugString(TEXT("Shush!\n"));
@@ -1421,6 +1435,8 @@ static void OnShush()
     sPreviousShushTimes[sPreviousShushIndex] = now;
     sPreviousShushIndex = (sPreviousShushIndex + 1) % ARRAY_COUNT(sPreviousShushTimes);
     
+    RecordShushEvent();
+
     if(sTimeoutIndex >= 0)
     {
         ++sTimeoutIndex;

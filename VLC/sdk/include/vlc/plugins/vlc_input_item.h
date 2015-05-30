@@ -2,7 +2,7 @@
  * vlc_input_item.h: Core input item
  *****************************************************************************
  * Copyright (C) 1999-2009 VLC authors and VideoLAN
- * $Id: 686957288e574ef911209db70178568c9ba61a39 $
+ * $Id: f4eb4bb23416e1b7ed774b447c5948b3086f9cfe $
  *
  * Authors: Christophe Massiot <massiot@via.ecp.fr>
  *          Laurent Aimar <fenrir@via.ecp.fr>
@@ -54,7 +54,6 @@ struct info_category_t
 
 struct input_item_t
 {
-    VLC_GC_MEMBERS
     int        i_id;                 /**< Identifier of the item */
 
     char       *psz_name;            /**< text describing this item */
@@ -90,6 +89,8 @@ struct input_item_t
     bool        b_fixed_name;        /**< Can the interface change the name ?*/
     bool        b_error_when_reading;/**< Error When Reading */
 };
+
+TYPEDEF_ARRAY(input_item_t*, input_item_array_t)
 
 enum input_item_type_e
 {
@@ -175,8 +176,8 @@ enum input_item_option_e
      * By default options are untrusted */
     VLC_INPUT_OPTION_TRUSTED = 0x2,
 
-    /* Change the value associated to an option if already present, otherwise
-     * add the option */
+    /* Add the option, unless the same option
+     * is already present. */
     VLC_INPUT_OPTION_UNIQUE  = 0x100,
 };
 
@@ -198,6 +199,17 @@ VLC_API mtime_t input_item_GetDuration( input_item_t * p_i );
 VLC_API void input_item_SetDuration( input_item_t * p_i, mtime_t i_duration );
 VLC_API bool input_item_IsPreparsed( input_item_t *p_i );
 VLC_API bool input_item_IsArtFetched( input_item_t *p_i );
+
+static inline char *input_item_GetNowPlayingFb( input_item_t *p_item )
+{
+    char *psz_meta = input_item_GetMeta( p_item, vlc_meta_NowPlaying );
+    if( !psz_meta || strlen( psz_meta ) == 0 )
+    {
+        free( psz_meta );
+        return input_item_GetMeta( p_item, vlc_meta_ESNowPlaying );
+    }
+    return psz_meta;
+}
 
 #define INPUT_META( name ) \
 static inline \
@@ -224,10 +236,17 @@ INPUT_META(Setting)
 INPUT_META(URL)
 INPUT_META(Language)
 INPUT_META(NowPlaying)
+INPUT_META(ESNowPlaying)
 INPUT_META(Publisher)
 INPUT_META(EncodedBy)
 INPUT_META(ArtworkURL)
 INPUT_META(TrackID)
+INPUT_META(TrackTotal)
+INPUT_META(Director)
+INPUT_META(Season)
+INPUT_META(Episode)
+INPUT_META(ShowName)
+INPUT_META(Actors)
 
 #define input_item_SetTrackNum input_item_SetTrackNumber
 #define input_item_GetTrackNum input_item_GetTrackNumber
@@ -267,6 +286,28 @@ VLC_API input_item_t * input_item_NewExt( const char *psz_uri, const char *psz_n
  */
 VLC_API input_item_t * input_item_Copy(input_item_t * ) VLC_USED;
 
+/** Holds an input item, i.e. creates a new reference. */
+VLC_API input_item_t *input_item_Hold(input_item_t *);
+
+/** Releases an input item, i.e. decrements its reference counter. */
+VLC_API void input_item_Release(input_item_t *);
+
+/* Historical hack... */
+#define vlc_gc_incref(i) input_item_Hold(i)
+#define vlc_gc_decref(i) input_item_Release(i)
+
+typedef enum input_item_meta_request_option_t
+{
+    META_REQUEST_OPTION_NONE          = 0x00,
+    META_REQUEST_OPTION_SCOPE_LOCAL   = 0x01,
+    META_REQUEST_OPTION_SCOPE_NETWORK = 0x02,
+    META_REQUEST_OPTION_SCOPE_ANY     = 0x03
+} input_item_meta_request_option_t;
+
+VLC_API int libvlc_MetaRequest(libvlc_int_t *, input_item_t *,
+                               input_item_meta_request_option_t );
+VLC_API int libvlc_ArtRequest(libvlc_int_t *, input_item_t *,
+                              input_item_meta_request_option_t );
 
 /******************
  * Input stats
