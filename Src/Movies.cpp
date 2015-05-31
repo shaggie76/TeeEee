@@ -92,9 +92,7 @@ TCHAR* FindBaseName(TCHAR* str)
 
 static void ScanDir(const TCHAR* dir)
 {
-    TCHAR messageBuf[512];
-    _sntprintf(messageBuf, ARRAY_COUNT(messageBuf), TEXT("Scanning: %s\n"), dir);
-    OutputDebugString(messageBuf);
+    LogF(TEXT("Scanning: %s\n"), dir);
 
     WIN32_FIND_DATA findData = {0};
     
@@ -230,8 +228,7 @@ static void ScanDir(const TCHAR* dir)
             }
             else
             {
-                _sntprintf(messageBuf, ARRAY_COUNT(messageBuf), TEXT("No cover found for: %s\n"), movie.name);
-                OutputDebugString(messageBuf);
+                LogF(TEXT("No cover found for: %s\n"), movie.name);
                 movie.coverPath[0] = '\0';
                 
                 /* MessageBox(NULL, messageBuf, TEXT("TeeEee"), MB_OK | MB_ICONERROR); */
@@ -312,7 +309,5 @@ void UnloadMovie(Movie& movie)
 
     movie.state = Movie::MS_DORMANT;
     
-    TCHAR logBuffer[512];
-    _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Unloaded %s\n"), movie.name);
-    OutputDebugString(logBuffer);
+    LogF(TEXT("Unloaded %s\n"), movie.name);
 }

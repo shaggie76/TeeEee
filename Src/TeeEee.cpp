@@ -218,9 +218,7 @@ static DWORD WINAPI LoadThread(void *)
         hr = OleLoadPicturePath(movie->coverPath, NULL, 0, CLR_NONE, IID_IPicture, reinterpret_cast<LPVOID*>(&picture));
         if(FAILED(hr))
         {
-            TCHAR logBuffer[512];
-            _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Failed to load %s\n"), movie->coverPath);
-            OutputDebugString(logBuffer);
+            LogF(TEXT("Failed to load %s\n"), movie->coverPath);
             movie->state = Movie::MS_DORMANT;
             continue;
         }
@@ -255,9 +253,7 @@ static DWORD WINAPI LoadThread(void *)
     
         movie->cover = bitmap;
         
-        TCHAR logBuffer[512];
-        _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Loaded %s\n"), movie->name);
-        OutputDebugString(logBuffer);
+        LogF(TEXT("Loaded %s\n"), movie->name);
         
         movie->state = Movie::MS_LOADED;
         
@@ -995,9 +991,7 @@ static void StopMovie()
 
     if(stopped)
     {
-        OutputDebugString(TEXT("Stopped "));
-        OutputDebugString(movie.name);
-        OutputDebugString(TEXT("\n"));
+        LogF(TEXT("Stopped %s\n"), movie.name);
     }
     
     Assert(InvalidateRect(NULL, NULL, TRUE));
@@ -1102,20 +1096,20 @@ static void AdvanceCurrentChannel()
 
 static void MovieCompletedCB(const libvlc_event_t*, void*)
 {
-    OutputDebugString(TEXT("MovieCompleted\n"));
+    Log(TEXT("MovieCompleted\n"));
     PostMessage(sWindowHandle, WM_MOVIE_COMPLETED, 0, 0);
 }
 
 static void PlayerErrorCB(const libvlc_event_t*, void*)
 {
-    OutputDebugString(TEXT("PlayerErrorCB\n"));
+    Log(TEXT("PlayerErrorCB\n"));
     PostMessage(sWindowHandle, WM_MOVIE_COMPLETED, 0, 0);
 }
 
 static void LengthChangedCB(const libvlc_event_t*, void*)
 {
     // Must be deferred to main thread:
-    OutputDebugString(TEXT("LengthChangedCB\n"));
+    Log(TEXT("LengthChangedCB\n"));
     PostMessage(sWindowHandle, WM_LENGTH_CHANGED, 0, 0);
 }
 
@@ -1164,9 +1158,7 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
 
     if(!media)
     {
-        TCHAR logBuffer[512];
-        _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Could not load media %s\n"), movie.path);
-        OutputDebugString(logBuffer);
+        LogF(TEXT("Could not load media %s\n"), movie.path);
         return;
     }
 
@@ -1182,9 +1174,7 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
 
         if(!sVlcPlayer)
         {
-            TCHAR logBuffer[512];
-            _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Could not create player for %s\n"), movie.path);
-            OutputDebugString(logBuffer);
+            LogF(TEXT("Could not create player for %s\n"), movie.path);
             return;
         }
 
@@ -1212,9 +1202,7 @@ static void PlayMovieEx(Movie& movie, PlayingState newState)
 
     Assert(SetTimer(sWindowHandle, SET_VOLUME_TIMER, SET_VOLUME_DELAY, NULL));
 
-    OutputDebugString(TEXT("Started "));
-    OutputDebugString(movie.name);
-    OutputDebugString(TEXT("\n"));
+    LogF(TEXT("Started %s\n"), movie.name);
 }
 
 static void PlayMovie()
@@ -1247,9 +1235,7 @@ static void PlayMovie()
         
         gPlayingState = PM_PLAYING;
 
-        OutputDebugString(TEXT("Resumed "));
-        OutputDebugString(movie.name);
-        OutputDebugString(TEXT("\n"));
+        LogF(TEXT("Resumeed %s\n"), movie.name);
         
         return;
     }
@@ -1277,10 +1263,8 @@ static void PauseMovie()
     libvlc_media_player_stop(sVlcPlayer);
 
     Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
-    
-    OutputDebugString(TEXT("Paused "));
-    OutputDebugString(movie.name);
-    OutputDebugString(TEXT("\n"));
+
+    LogF(TEXT("Paused %s\n"), movie.name);
 }
 
 static void PlayLoading()
@@ -1328,7 +1312,7 @@ static void StartTimeoutBar()
     // Cannot customize color if themes are enabled
     if(FAILED(SetWindowTheme(sProgressBar, TEXT(" "), TEXT(" "))))
     {
-        OutputDebugString(TEXT("Failed to disable theme on progress-bar\n"));
+        Log(TEXT("Failed to disable theme on progress-bar\n"));
     }
 
     SendMessage(sProgressBar, PBM_SETBARCOLOR, 0, static_cast<LPARAM>(RGB(128,128,128)));
@@ -1337,9 +1321,7 @@ static void StartTimeoutBar()
     const UINT timeout = (sTimeoutIndex > 0) ? sTimeoutIndex - 1 : 0;
     const UINT seconds = std::min(MAX_TIMEOUT_SECONDS, sMinTimeout << static_cast<UINT>(timeout));
 
-    TCHAR logBuffer[512];
-    _sntprintf(logBuffer, ARRAY_COUNT(logBuffer), TEXT("Starting %d second timeout\n"), seconds);
-    OutputDebugString(logBuffer);
+    LogF(TEXT("Starting %d second timeout\n"), seconds);
 
     SendMessage(sProgressBar, PBM_SETRANGE32, 0, static_cast<LPARAM>((seconds * 1000) / TIMEOUT_TICK_MS));
 
@@ -1498,7 +1480,7 @@ static Database sDatabase;
 
 static void OnShush()
 {
-    OutputDebugString(TEXT("Shush!\n"));
+    Log(TEXT("Shush!\n"));
     
     if(gShush.empty())
     {
@@ -1543,8 +1525,8 @@ static void OnShush()
     }
 #endif
 
-    // const char* type = sSleepTime ? "goodnight" : (sTimeoutIndex >= 0) ? "timeout" : "shush";
-    // sDatabase.RecordEvent(type);
+    const char* type = sSleepTime ? "goodnight" : (sTimeoutIndex >= 0) ? "timeout" : "shush";
+    sDatabase.RecordEvent(type);
     
     Movies& movies = sSleepTime ? gGoodnight : (sTimeoutIndex >= 0) ? gTimeout : gShush;
     PlayMovieEx(movies[rand() % movies.size()], PM_SHUSH);
@@ -1923,7 +1905,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     
                     if(now > sSleepTime)
                     {
-                        OutputDebugString(TEXT("Sleep timer done\n"));
+                        Log(TEXT("Sleep timer done\n"));
                         sSleepTime = 0;
 
                         StopMovie();
@@ -2665,7 +2647,7 @@ static void InitJoystick()
 
     if(FAILED(sDirectInput->EnumDevices(DI8DEVCLASS_GAMECTRL, EnumJoysticksCallback, NULL, DIEDFL_ATTACHEDONLY)) || !sJoystick)
     {
-        OutputDebugString(TEXT("Could not find joystick\n"));
+        Log(TEXT("Could not find joystick\n"));
         SafeRelease(sDirectInput);
         return;
     }
@@ -2939,8 +2921,35 @@ static void ShutdownJoystick()
     SafeRelease(sDirectInput);
 }
 
+void VlcLogCB(void*, int level, const libvlc_log_t*, const char* format, va_list args)
+{
+    if(level != LIBVLC_ERROR)
+    {
+        return;
+    }
+
+    char buffer[1024];
+    const size_t bufferSize = ARRAY_COUNT(buffer);
+
+    int rc = vsnprintf(buffer, bufferSize - 1, format, args);
+
+    if(rc < 0)
+    {
+        return;
+    }
+    
+    if((rc + 1) < bufferSize)
+    {
+        strcpy(buffer + rc, "\n");
+    }
+
+    Log(buffer);
+}
+
 int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
+    OpenLog();
+
     srand(static_cast<unsigned>(time(NULL)));
     Assert(!FAILED(CoInitialize(NULL)));
 
@@ -2957,8 +2966,11 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
     if(!sVlc)
     {
+        CloseLog();
         return(-1);
     }
+
+    libvlc_log_set(sVlc, VlcLogCB, NULL);
 
     FindMovies();
     BuildChannels();
@@ -3021,6 +3033,6 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     ShutdownVolume();
 
     CoUninitialize();
-    
+    CloseLog();
     return(0);
 }

@@ -241,11 +241,7 @@ static void ProcessMicPacket(size_t packetIndex)
     float longTermRmsVolume = sqrtf(totalSumOfSquares / totalSamples);
     float longTermNoiseDb = VolumeToDecibels(longTermRmsVolume);
 
-#if 0
-    TCHAR buffer[256];
-    _sntprintf(buffer, ARRAY_COUNT(buffer), TEXT("ST: %g LT: %g\n"), noiseDb, longTermNoiseDb);
-    OutputDebugString(buffer);
-#endif
+    // LogF(TEXT("ST: %g LT: %g\n"), noiseDb, longTermNoiseDb);
 
     if(noiseDb >= sPeakSensitivity)
     {
@@ -357,7 +353,7 @@ void TEMicrophone::Initialize(HWND windowHandle)
     
     if(result != MMSYSERR_NOERROR)
     {
-        OutputDebugString(TEXT("Could not open microphone\n"));
+        Log(TEXT("Could not open microphone\n"));
         return;
     }
 
@@ -407,7 +403,7 @@ void TEMicrophone::Initialize(HWND windowHandle)
     
         if(result != MMSYSERR_NOERROR)
         {
-            OutputDebugString(TEXT("Could not open wave out\n"));
+            Log(TEXT("Could not open wave out\n"));
             return;
         }
 
@@ -489,8 +485,5 @@ inline T Lerp(const T& a, const T& b, const S& r)
 void TEMicrophone::SetSensitivity(float s)
 {
     sPeakSensitivity = Lerp(MIN_SENSITIVITY, MAX_SENSITIVITY, s);
-
-    TCHAR buffer[256];
-    _sntprintf(buffer, ARRAY_COUNT(buffer), TEXT("Sensitivity: %g\n"), sPeakSensitivity);
-    OutputDebugString(buffer);
+    LogF(TEXT("Sensitivity: %g\n"), sPeakSensitivity);
 }

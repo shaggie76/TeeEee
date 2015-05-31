@@ -147,4 +147,10 @@ public:
 
 #pragma warning(pop)
 
+extern void OpenLog();
+extern void CloseLog();
+extern void Log(const char* format);
+extern void Log(const TCHAR* format);
+extern void LogF(const TCHAR* format, ...);
+
 #endif // GLOBALS_H
