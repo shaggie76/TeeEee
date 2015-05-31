@@ -92,6 +92,10 @@ TCHAR* FindBaseName(TCHAR* str)
 
 static void ScanDir(const TCHAR* dir)
 {
+    TCHAR messageBuf[512];
+    _sntprintf(messageBuf, ARRAY_COUNT(messageBuf), TEXT("Scanning: %s\n"), dir);
+    OutputDebugString(messageBuf);
+
     WIN32_FIND_DATA findData = {0};
     
     TCHAR searchWildcard[MAX_PATH];
@@ -226,7 +230,6 @@ static void ScanDir(const TCHAR* dir)
             }
             else
             {
-                TCHAR messageBuf[1024];
                 _sntprintf(messageBuf, ARRAY_COUNT(messageBuf), TEXT("No cover found for: %s\n"), movie.name);
                 OutputDebugString(messageBuf);
                 movie.coverPath[0] = '\0';

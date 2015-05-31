@@ -21,13 +21,12 @@
 #pragma warning(pop)
 
 /*
-    channel change -> dial
-    bedtime shush -> black screen, no shush?
     SSE microphone i16->fp
 */
 
 #pragma comment(lib, "Dinput8.lib")
 #pragma comment(lib, "dxguid.lib")
+#pragma comment(lib, "Ws2_32.lib")
 
 #pragma comment(lib, "libvlccore.lib")
 #pragma comment(lib, "libvlc.lib")
@@ -40,7 +39,8 @@
 
 #pragma comment(linker, "/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
-#define RECYCLE_PLAYER_INSTANCE
+// This causes memory corruption after I upgraded to VS2012 and VLC 2.2.1
+// #define RECYCLE_PLAYER_INSTANCE
 
 typedef std::deque<Movie*> ChannelMovies;
 
@@ -1411,10 +1411,90 @@ static void OnLengthChanged()
     }
 }
 
-static void RecordShushEvent()
+class Database
 {
-    // TODO:
-}
+public:
+    Database() :
+        mMongo(NULL),
+        mCollection(NULL)
+    {
+        mongoc_init();
+    }
+
+    ~Database()
+    {
+        Disconnect();
+        mongoc_cleanup();
+    }
+
+    void RecordEvent(const char* type)
+    {
+        if(!Connect())
+        {
+            return;
+        }
+
+        bson_t* doc = bson_new();
+        BSON_APPEND_UTF8(doc, "t", type);
+
+        bson_error_t error;
+        const bool inserted = mongoc_collection_insert(mCollection, MONGOC_INSERT_NONE, doc, NULL, &error);
+
+        bson_destroy(doc);
+     
+        if(!inserted)   
+        {
+            char logBuffer[512];
+            _snprintf(logBuffer, ARRAY_COUNT(logBuffer), "RecordEvent: %s\n", error.message);
+            OutputDebugStringA(logBuffer);
+     
+            Disconnect();
+        }
+    }
+
+private:
+
+    bool Connect()
+    {
+        if(mMongo)
+        {
+            return(true);
+        }
+
+        mMongo = mongoc_client_new("mongodb://localhost:27017/");
+        Assert(mMongo);
+
+        if(!mMongo)
+        {
+            return(false);
+        }
+        
+        mCollection = mongoc_client_get_collection(mMongo, "te", "events");
+        Assert(mCollection);
+
+        return(true);
+    }
+
+    void Disconnect()
+    {
+        if(mCollection)
+        {
+            mongoc_collection_destroy(mCollection);
+            mCollection = NULL;
+        }
+
+        if(mMongo)
+        {
+            mongoc_client_destroy(mMongo);
+            mMongo = NULL;
+        }
+    }
+    
+    mongoc_client_t* mMongo;
+    mongoc_collection_t* mCollection;
+};
+
+static Database sDatabase;
 
 static void OnShush()
 {
@@ -1435,8 +1515,6 @@ static void OnShush()
     sPreviousShushTimes[sPreviousShushIndex] = now;
     sPreviousShushIndex = (sPreviousShushIndex + 1) % ARRAY_COUNT(sPreviousShushTimes);
     
-    RecordShushEvent();
-
     if(sTimeoutIndex >= 0)
     {
         ++sTimeoutIndex;
@@ -1464,6 +1542,9 @@ static void OnShush()
         return;
     }
 #endif
+
+    // const char* type = sSleepTime ? "goodnight" : (sTimeoutIndex >= 0) ? "timeout" : "shush";
+    // sDatabase.RecordEvent(type);
     
     Movies& movies = sSleepTime ? gGoodnight : (sTimeoutIndex >= 0) ? gTimeout : gShush;
     PlayMovieEx(movies[rand() % movies.size()], PM_SHUSH);
@@ -2514,10 +2595,11 @@ static void InitWindow()
     
     DWORD windowStyle = WS_POPUP;
 
-#ifdef _DEBUG
-    windowStyle |= WS_DLGFRAME;
-#endif
-    
+    if(IsDebuggerPresent())
+    {
+        windowStyle |= WS_DLGFRAME;
+    }
+
     int x = 0;
     int y = 0;
     int dx = 0;
@@ -2583,7 +2665,7 @@ static void InitJoystick()
 
     if(FAILED(sDirectInput->EnumDevices(DI8DEVCLASS_GAMECTRL, EnumJoysticksCallback, NULL, DIEDFL_ATTACHEDONLY)) || !sJoystick)
     {
-        OutputDebugString(TEXT("Could not find joystick"));
+        OutputDebugString(TEXT("Could not find joystick\n"));
         SafeRelease(sDirectInput);
         return;
     }

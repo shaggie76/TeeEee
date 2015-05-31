@@ -28,3 +28,10 @@
 ipch/
 Win32/
 x64/
+
+!MongoDB
+!MongoDB/*
+
+!VLC
+!VLC/*
+
