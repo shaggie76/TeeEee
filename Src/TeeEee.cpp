@@ -2289,6 +2289,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                 case COMMAND_SLEEP_MODE_DISABLED:
                 {
                     sSleepTime = 0;
+                    LoadChannelCovers();
                     return(0);
                 }
                 
@@ -2508,17 +2509,32 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
 
             if(wParam == VK_MEDIA_PLAY_PAUSE)
             {
+                if(sSleepTime)
+                {
+                    SYSTEMTIME systemTime = {0};
+                    GetLocalTime(&systemTime);
+                    
+                    if((systemTime.wHour > 6) && (systemTime.wHour < 12))
+                    {
+                        sSleepTime = 0;
+                        LoadChannelCovers();
+                    }
+                }
+
                 if(gPlayingState == PM_PLAYING)
                 {
                     PauseMovie();
+                    sDatabase.RecordEvent("stop");
                 }
                 else if(gPlayingState == PM_LOADING)
                 {
                     StopMovie();
                     sLoading = false;
+                    sDatabase.RecordEvent("stop");
                 }
                 else
                 {
+                    sDatabase.RecordEvent("start");
                     PlayMovie();
                 }
                 return(0);
@@ -2985,6 +3001,7 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     TEMicrophone::Initialize(sWindowHandle);
     TEMicrophone::SetSensitivity(sMicrophoneSensitivityNormal);
     
+    sDatabase.RecordEvent("start");
     PlayMovie();
 
     for(;;)
@@ -3005,6 +3022,18 @@ int APIENTRY WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
         TranslateMessage(&msg); 
         DispatchMessage(&msg);
     } 
+
+    if(gPlayingState == PM_PLAYING)
+    {
+        StopMovie();
+        sDatabase.RecordEvent("stop");
+    }
+    else if(gPlayingState == PM_LOADING)
+    {
+        StopMovie();
+        sLoading = false;
+        sDatabase.RecordEvent("stop");
+    }
 
     if(sVlcPlayer)
     {
