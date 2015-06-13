@@ -1764,6 +1764,27 @@ static void CleanMenuName(TCHAR* out, const TCHAR* in)
     *out = '\0';
 }
 
+static void EndSleep()
+{
+    if(!sSleepTime)
+    {
+        return;
+    }
+
+    sSleepTime = 0;
+    
+    StopMovie();
+    sLoading = false;
+    sDatabase.RecordEvent("stop");
+
+    for(size_t i = 0; i < sChannels.size(); ++i)
+    {    
+        GetSystemTimeAsFileTime(reinterpret_cast<LPFILETIME>(&sChannels[i].startedPlaying));
+    }
+
+    Assert(InvalidateRect(sWindowHandle, NULL, TRUE));
+}
+
 template<typename MatchFunctor>
 static void MakeIndexSubMenu(HMENU menuHandle, UINT_PTR commandBase, MatchFunctor f, const Movies& movies, const Movie* selected)
 {
@@ -1906,9 +1927,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     if(now > sSleepTime)
                     {
                         Log(TEXT("Sleep timer done\n"));
-                        sSleepTime = 0;
-
-                        StopMovie();
+                        EndSleep();
                     }
 #endif
                 }
@@ -2288,8 +2307,7 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                 
                 case COMMAND_SLEEP_MODE_DISABLED:
                 {
-                    sSleepTime = 0;
-                    LoadChannelCovers();
+                    EndSleep();
                     return(0);
                 }
                 
@@ -2516,8 +2534,8 @@ static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT msg, WPARAM wParam, L
                     
                     if((systemTime.wHour > 6) && (systemTime.wHour < 12))
                     {
-                        sSleepTime = 0;
-                        LoadChannelCovers();
+                        EndSleep();
+                        return(0);
                     }
                 }
 
