@@ -13,6 +13,8 @@ function timeToId($ts) {
     return new MongoId($hexTs."0000000000000000");
 }
 
+const DEBUG = 0;
+
 $realTimeZone = 'America/Toronto';
 date_default_timezone_set($realTimeZone);
 
@@ -25,7 +27,7 @@ $begin->modify("+20 hour");
 
 $begin = timeToId($begin);
 
-$it = $events->find(['_id' => ['$gte' => $begin]]);
+$it = $events->find(['_id' => ['$gte' => $begin]])->sort(['_id' => 1]);
 
 $cur = null;
 $asleep = 0;
@@ -55,9 +57,9 @@ function saveSleepInterval($begin, $end)
 
     $key = strftime("%Y-%m-%d", $key);
 
-    if(!isset($days[$key]))
+    if(DEBUG && !isset($days[$key]))
     {
-        // $days[$key] = [];
+        $days[$key] = [];
     }
 
     $dataTable['rows'][] =
@@ -66,20 +68,41 @@ function saveSleepInterval($begin, $end)
         [
             [ 'v' => $key ],
             [ 'v' => "" ],
-            [ 'v' => $begin - $cur + 60 * 60],
-            [ 'v' => $end - $cur + 60 * 60 ]
+            [ 'v' => $begin - $cur ],
+            [ 'v' => $end - $cur ]
         ]
     ];
 
-    // $days[$key][] = [ strftime("%I:%M %p", $begin), strftime("%I:%M %p", $end) ];
+    if(DEBUG)
+    {
+        $days[$key][] =
+        [
+            strftime("%I:%M %p", $begin),
+            strftime("%I:%M %p", $end),
+            $begin - $cur,
+            $end - $cur,
+        ];
+    }
 }
 
-while($it->hasNext())
+function processDate($d, $t)
 {
-    $rec = $it->next();
+    global $cur;
+    global $bedTime;
+    global $wakeUp;
+    global $asleep;
 
-    $d = $rec['_id']->getTimestamp();
+    if(!is_null($cur) && ($d > $wakeUp))
+    // if(!is_null($cur) && (($d > $wakeUp) || ($t === 'stop')))
+    {
+        if($asleep < $wakeUp)
+        {
+            saveSleepInterval($asleep, $wakeUp);
+        }
 
+        $cur = null;
+    }
+    
     if(is_null($cur))
     {
         $cur = strftime("%Y-%m-%d", $d);
@@ -93,23 +116,14 @@ while($it->hasNext())
         $wakeUp = $wakeUp->getTimestamp();
 
         $asleep = $bedTime + NOD_OFF_TIME;
-        $cur = strtotime($cur . " 00:00:00 UTC");
+
+        // $cur = strtotime($cur . " 00:00:00 UTC");
+        $cur = strtotime($cur);
     }
 
     if($d < $bedTime)
     {
-        continue;
-    }
-
-    if($d > $wakeUp)
-    {
-        if($asleep < $wakeUp)
-        {
-            saveSleepInterval($asleep, $wakeUp);
-        }
-
-        $cur = null;
-        continue;
+        return;
     }
 
     if($asleep < $d)
@@ -120,9 +134,16 @@ while($it->hasNext())
     $asleep = $d + NOD_OFF_TIME;
 }
 
-$dataTable['rows'] = array_reverse($dataTable['rows']); 
-// echo json_encode($days, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+while($it->hasNext())
+{
+    $rec = $it->next();
+    $d = $rec['_id']->getTimestamp();
+    processDate($d, $rec['t']);
+}
 
+processDate(time(), 'stop');
+
+$dataTable['rows'] = array_reverse($dataTable['rows']); 
 ?>
 <html>
 <head><title>TeeEee</title></head>
@@ -136,13 +157,16 @@ $dataTable['rows'] = array_reverse($dataTable['rows']);
         var chart = new google.visualization.Timeline(container);
         var data = <?php echo json_encode($dataTable) ?>;
 
+        var today = new Date(0,0,0,0,0,0);
+
         for(var r in data.rows)
         {
             for(var c in data.rows[r].c)
             {
-                if(c > 1)
+                if(c >= 2)
                 {
-                    var v = new Date(data.rows[r].c[c].v * 1000);
+                    var v = new Date(today);
+                    v.setUTCSeconds(v.getUTCSeconds() + data.rows[r].c[c].v);
                     data.rows[r].c[c].v = v;
                 }
             }
@@ -150,12 +174,32 @@ $dataTable['rows'] = array_reverse($dataTable['rows']);
 
         var dataTable = new google.visualization.DataTable(data);
 
-        var options = { timeline: { singleColor: '#434CD1' } };
+        var options =
+        {
+            /* does not work
+            hAxis :
+            {
+                minValue : new Date(0, 0, 0, 20, 0, 0),
+                maxValue : new Date(0, 0, 1,  8, 0, 0)
+            },
+            */
+            timeline :
+            {
+                singleColor: '#434CD1'
+            }
+        };
         chart.draw(dataTable, options);
       }
     </script>
   </head>
 <body>
-    <div id="timeline" style="width: 1000px; height: 512px;"></div>
+<?php
+    $height = (count($dataTable['rows']) * 40) . "px";
+    print("<div id=\"timeline\" style=\"width: 900px; height: $height;\"></div>\n");
+    if(DEBUG)
+    {
+        echo "<pre>\n" . json_encode($days, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n<pre>";
+    }
+?>
 </body>
 </html>
