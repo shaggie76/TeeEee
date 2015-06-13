@@ -262,6 +262,7 @@
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)libfftw3f-3.dll</Outputs>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)libfftw3f-3.dll</Outputs>
     </CustomBuild>
+    <None Include="Src\index.php" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Res\TeeEee.rc" />

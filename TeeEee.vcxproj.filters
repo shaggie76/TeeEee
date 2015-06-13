@@ -46,6 +46,9 @@
     <None Include="Res\TeeEee.ico">
       <Filter>Res</Filter>
     </None>
+    <None Include="Src\index.php">
+      <Filter>Src</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Res\TeeEee.rc">
